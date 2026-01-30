@@ -1,0 +1,45 @@
+[tool.poetry]
+name = "folio-backend"
+version = "0.1.0"
+description = "Folio backend API"
+authors = ["You"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+sqlalchemy = "^2.0.25"
+asyncpg = "^0.29.0"
+alembic = "^1.13.1"
+pydantic = "^2.5.3"
+pydantic-settings = "^2.1.0"
+meilisearch = "^0.31.0"
+bibtexparser = "^1.4.1"
+minio = "^7.2.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.4"
+httpx = "^0.26.0"
+ruff = "^0.2.0"
+pytest-asyncio = "^0.23.0"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4"]
+ignore = ["E501", "B008"]  # E501: line length; B008: FastAPI Depends() pattern
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
