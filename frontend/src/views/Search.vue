@@ -21,13 +21,30 @@ const entryTypes = ['article', 'book', 'inproceedings', 'phdthesis', 'techreport
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const search = async () => {
-  if (!query.value.trim()) return
+  // Allow empty query if filter is active (e.g. recent)
+  // If no query and no filters, don't search (unless we want 'all' by default?)
+  // For 'Recent', we expect filter=recent or similar logic.
   
   loading.value = true
   error.value = ''
   
   try {
-    const response = await api.search(query.value, filters.value)
+    const isRecent = route.query.filter === 'recent'
+    let sortParam: string | undefined = undefined
+    
+    // If Recent mode, sort by created_at desc
+    // Note: meilisearch sort format is "attr:asc" or "attr:desc"
+    if (isRecent) {
+        sortParam = 'created_at:desc'
+    }
+
+    const response = await api.search(
+        query.value, 
+        filters.value, 
+        20, 
+        0, 
+        sortParam
+    )
     results.value = response.hits
     total.value = response.total
   } catch (e) {
@@ -46,16 +63,15 @@ const debouncedSearch = () => {
   debounceTimer = setTimeout(search, 300)
 }
 
-watch(() => route.query.q, (newQ) => {
-  query.value = newQ as string || ''
-  if (query.value) search()
+watch(() => route.query, (newQuery) => {
+  query.value = newQuery.q as string || ''
+  // Trigger search if q or filter changes
+  search()
 }, { immediate: true })
 
 // Watch query for debounced search on typing
 watch(query, () => {
-  if (query.value.trim()) {
     debouncedSearch()
-  }
 })
 
 onUnmounted(() => {

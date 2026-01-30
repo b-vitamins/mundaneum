@@ -22,12 +22,13 @@ class SearchResponse(BaseModel):
 
 @router.get("", response_model=SearchResponse)
 async def search_entries(
-    q: str = Query(..., min_length=1, description="Search query"),
+    q: Optional[str] = Query(None, description="Search query"),
     entry_type: Optional[str] = Query(None, description="Filter by entry type"),
     year_from: Optional[int] = Query(None, description="Minimum year"),
     year_to: Optional[int] = Query(None, description="Maximum year"),
     has_pdf: Optional[bool] = Query(None, description="Has PDF attached"),
     read: Optional[bool] = Query(None, description="Read status"),
+    sort: Optional[str] = Query(None, description="Sort order (e.g. 'year:desc')"),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Results offset"),
 ):
@@ -43,4 +44,4 @@ async def search_entries(
     if read is not None:
         filters["read"] = read
 
-    return meili_search(q, filters, limit, offset)
+    return meili_search(q, filters, limit, offset, sort)

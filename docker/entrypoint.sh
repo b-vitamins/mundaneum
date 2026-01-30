@@ -8,7 +8,7 @@ set -euo pipefail
 echo "Waiting for database..."
 max_attempts=60
 attempt=1
-while ! nc -z folio-db 5432; do
+while ! nc -z ${DB_HOST:-folio-db} ${DB_PORT:-5432}; do
   if [ $attempt -ge $max_attempts ]; then
     echo "ERROR: Database not available after $max_attempts seconds"
     exit 1

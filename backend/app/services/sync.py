@@ -174,10 +174,11 @@ def delete_entry(entry_id: str) -> None:
 
 
 def search(
-    query: str,
+    query: str | None,
     filters: dict | None = None,
     limit: int = 20,
     offset: int = 0,
+    sort: str | None = None,
 ) -> dict:
     """
     Search entries in Meilisearch.
@@ -210,14 +211,19 @@ def search(
 
         filter_str = " AND ".join(filter_parts) if filter_parts else None
 
-        result = index.search(
-            query,
-            {
-                "limit": limit,
-                "offset": offset,
-                "filter": filter_str,
-            },
-        )
+        # Prepare search params
+        search_params = {
+            "limit": limit,
+            "offset": offset,
+            "filter": filter_str,
+        }
+        if sort:
+            search_params["sort"] = [sort]
+
+        # Handle explicit None query for "match all"
+        q = query if query is not None else ""
+
+        result = index.search(q, search_params)
 
         return {
             "hits": result.get("hits", []),

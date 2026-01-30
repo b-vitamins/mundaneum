@@ -5,17 +5,18 @@ Entries router for Folio API.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.exceptions import NotFoundError
 from app.logging import get_logger
-from app.models import Entry, EntryAuthor
+from app.models import Entry, EntryAuthor, S2Citation, S2Paper
+from app.services.s2 import S2Service
 
 logger = get_logger(__name__)
 
@@ -63,6 +64,7 @@ class ReadRequest(BaseModel):
 @router.get("/{entry_id}", response_model=EntryDetailResponse)
 async def get_entry(
     entry_id: UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single entry by ID."""
@@ -89,6 +91,9 @@ async def get_entry(
         or optional.get("booktitle")
     )
     abstract = optional.get("abstract")
+
+    # Trigger background sync (S2 integration)
+    background_tasks.add_task(S2Service().sync_paper, str(entry_id))
 
     return EntryDetailResponse(
         id=str(entry.id),
@@ -209,3 +214,114 @@ async def get_bibtex(
     lines.append("}")
 
     return "\n".join(lines)
+
+
+class S2PaperResponse(BaseModel):
+    s2_id: str
+    title: str
+    year: Optional[int]
+    venue: Optional[str]
+    authors: list[dict]
+    tldr: Optional[dict]
+    citation_count: int
+    is_influential: bool = False
+    contexts: list[str] = []
+    intents: list[str] = []
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/{entry_id}/citations", response_model=list[S2PaperResponse])
+async def get_citations(
+    entry_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get citations (incoming edges) for this entry."""
+    # 1. Get Entry to find s2_id
+    res = await db.execute(select(Entry.s2_id).where(Entry.id == entry_id))
+    s2_id = res.scalar_one_or_none()
+
+    if not s2_id:
+        # If no S2 ID, return empty list (sync might be pending)
+        return []
+
+    # 2. Query S2Citations joined with S2Paper (source)
+    # We want papers that CITE this paper.
+    # So citation.target_id == s2_id. We fetch citation.source.
+
+    stmt = (
+        select(S2Citation, S2Paper)
+        .join(S2Paper, S2Citation.source_id == S2Paper.s2_id)
+        .where(S2Citation.target_id == s2_id)
+        .order_by(desc(S2Citation.is_influential), desc(S2Paper.citation_count))
+        .limit(100)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    response = []
+    for citation, paper in rows:
+        response.append(
+            S2PaperResponse(
+                s2_id=paper.s2_id,
+                title=paper.title,
+                year=paper.year,
+                venue=paper.venue,
+                authors=paper.authors,
+                tldr=paper.tldr,
+                citation_count=paper.citation_count,
+                is_influential=citation.is_influential,
+                contexts=citation.contexts,
+                intents=citation.intents,
+            )
+        )
+
+    return response
+
+
+@router.get("/{entry_id}/references", response_model=list[S2PaperResponse])
+async def get_references(
+    entry_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get references (outgoing edges) for this entry."""
+    res = await db.execute(select(Entry.s2_id).where(Entry.id == entry_id))
+    s2_id = res.scalar_one_or_none()
+
+    if not s2_id:
+        return []
+
+    # 2. Query S2Citations joined with S2Paper (target)
+    # This paper CITES target.
+    # So citation.source_id == s2_id. We fetch citation.target.
+
+    stmt = (
+        select(S2Citation, S2Paper)
+        .join(S2Paper, S2Citation.target_id == S2Paper.s2_id)
+        .where(S2Citation.source_id == s2_id)
+        .order_by(desc(S2Citation.is_influential), desc(S2Paper.citation_count))
+        .limit(100)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    response = []
+    for citation, paper in rows:
+        response.append(
+            S2PaperResponse(
+                s2_id=paper.s2_id,
+                title=paper.title,
+                year=paper.year,
+                venue=paper.venue,
+                authors=paper.authors,
+                tldr=paper.tldr,
+                citation_count=paper.citation_count,
+                is_influential=citation.is_influential,
+                contexts=citation.contexts,
+                intents=citation.intents,
+            )
+        )
+
+    return response

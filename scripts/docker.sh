@@ -99,11 +99,12 @@ start_folio() {
     echo "Starting Folio..."
     $DOCKER run -d \
         --name folio \
-        --network $NETWORK_NAME \
-        -e DATABASE_URL=postgresql://folio:$POSTGRES_PASSWORD@folio-db:5432/folio \
-        -e MEILI_URL=http://folio-search:7700 \
+        --network host \
+        -e DB_HOST=127.0.0.1 \
+        -e DB_PORT=$DB_PORT \
+        -e DATABASE_URL=postgresql://folio:$POSTGRES_PASSWORD@127.0.0.1:$DB_PORT/folio \
+        -e MEILI_URL=http://127.0.0.1:$MEILI_PORT \
         -e BIB_DIRECTORY=/data \
-        -p $FOLIO_PORT:80 \
         -v "$BIB_DIRECTORY:/data:ro" \
         folio
 }

@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type EntryDetail, type Collection, ApiError } from '@/api/client'
+import CitationList from '@/components/CitationList.vue'
 
 const route = useRoute()
 const entry = ref<EntryDetail | null>(null)
@@ -188,7 +189,7 @@ const allFields = computed(() => {
 
           <nav class="tabs">
             <button
-              v-for="tab in tabs"
+              v-for="tab in ['abstract', 'notes', 'citations', 'references', 'metadata']"
               :key="tab"
               :class="['tab', { active: activeTab === tab }]"
               @click="activeTab = tab"
@@ -210,6 +211,14 @@ const allFields = computed(() => {
               @blur="saveNotes"
             ></textarea>
             <p v-if="notesSaved" class="notes-saved">Notes saved</p>
+          </section>
+
+          <section v-if="activeTab === 'citations'" class="tab-content">
+             <CitationList :entry-id="entry.id" type="citations" />
+          </section>
+
+          <section v-if="activeTab === 'references'" class="tab-content">
+             <CitationList :entry-id="entry.id" type="references" />
           </section>
 
           <section v-if="activeTab === 'metadata'" class="tab-content">

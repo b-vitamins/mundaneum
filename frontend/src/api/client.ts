@@ -106,6 +106,19 @@ export class ApiError extends Error {
     }
 }
 
+export interface S2Paper {
+    s2_id: string
+    title: string
+    year?: number
+    venue?: string
+    authors: { authorId: string; name: string }[]
+    tldr?: { model: string; text: string }
+    citation_count: number
+    is_influential: boolean
+    contexts: string[]
+    intents: string[]
+}
+
 // Error handler
 function handleError(error: unknown): never {
     const axiosError = error as AxiosError<{ detail?: string }>
@@ -134,12 +147,13 @@ export const api = {
         query: string,
         filters?: SearchFilters,
         limit = 20,
-        offset = 0
+        offset = 0,
+        sort?: string
     ): Promise<SearchResponse> {
         try {
             const { data } = await withRetry(() =>
                 client.get('/search', {
-                    params: { q: query, ...filters, limit, offset }
+                    params: { q: query, ...filters, limit, offset, sort }
                 })
             )
             return data
@@ -238,6 +252,24 @@ export const api = {
     async importBibtex(directory?: string): Promise<{ imported: number; errors: number; total_parsed: number }> {
         try {
             const { data } = await client.post('/ingest', { directory })
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getCitations(id: string): Promise<S2Paper[]> {
+        try {
+            const { data } = await withRetry(() => client.get(`/entries/${id}/citations`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getReferences(id: string): Promise<S2Paper[]> {
+        try {
+            const { data } = await withRetry(() => client.get(`/entries/${id}/references`))
             return data
         } catch (error) {
             return handleError(error)
