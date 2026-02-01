@@ -35,6 +35,19 @@ export interface Stats {
     collections: number
 }
 
+export interface EntryListItem {
+    id: string
+    citation_key: string
+    entry_type: string
+    title: string
+    year: number | null
+    authors: string[]
+    venue: string | null
+    abstract: string | null
+    file_path: string | null
+    read: boolean
+}
+
 export interface SearchHit {
     id: string
     citation_key: string
@@ -174,6 +187,24 @@ export const api = {
     async getStats(): Promise<Stats> {
         try {
             const { data } = await withRetry(() => client.get('/stats'))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async listEntries(
+        limit = 50,
+        offset = 0,
+        sortBy = 'created_at',
+        sortOrder = 'desc'
+    ): Promise<EntryListItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get('/entries', {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
             return data
         } catch (error) {
             return handleError(error)

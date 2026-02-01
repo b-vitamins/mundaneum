@@ -49,6 +49,7 @@ onMounted(async () => {
       <p v-else class="stats">{{ stats.entries.toLocaleString() }} entries</p>
 
       <nav class="quick-links">
+        <router-link to="/browse" class="quick-link">Browse</router-link>
         <router-link to="/search?filter=recent" class="quick-link">Recent</router-link>
         <router-link to="/search?filter=unread" class="quick-link">Unread</router-link>
         <router-link to="/collections" class="quick-link">Collections</router-link>
