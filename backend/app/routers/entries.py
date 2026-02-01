@@ -2,11 +2,12 @@
 Entries router for Folio API.
 """
 
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -289,6 +290,40 @@ async def get_bibtex(
     lines.append("}")
 
     return "\n".join(lines)
+
+
+@router.get("/{entry_id}/pdf")
+async def get_pdf(
+    entry_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Serve the PDF file associated with an entry.
+
+    Returns a streaming file response with the PDF content.
+    """
+    result = await db.execute(select(Entry).where(Entry.id == entry_id))
+    entry = result.scalar_one_or_none()
+
+    if not entry:
+        raise NotFoundError("Entry", str(entry_id))
+
+    if not entry.file_path:
+        raise NotFoundError("PDF", f"Entry {entry_id} has no associated PDF")
+
+    pdf_path = Path(entry.file_path)
+
+    if not pdf_path.exists():
+        raise NotFoundError("PDF file", str(pdf_path))
+
+    if not pdf_path.suffix.lower() == ".pdf":
+        raise NotFoundError("PDF", "File is not a PDF")
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=pdf_path.name,
+    )
 
 
 class S2PaperResponse(BaseModel):

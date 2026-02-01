@@ -16,6 +16,8 @@ const showCollectionMenu = ref(false)
 const bibtex = ref('')
 const showBibtex = ref(false)
 const actionLoading = ref(false)
+const showPdfViewer = ref(false)
+const pdfUrl = ref('')
 
 const tabs = ['abstract', 'notes', 'metadata']
 
@@ -52,14 +54,35 @@ const handleClickOutside = (e: MouseEvent) => {
   }
 }
 
+const openPdf = () => {
+  if (!entry.value?.file_path) return
+  // Use backend API to serve PDF
+  pdfUrl.value = `/api/entries/${entry.value.id}/pdf`
+  showPdfViewer.value = true
+}
+
+const closePdf = () => {
+  showPdfViewer.value = false
+  pdfUrl.value = ''
+}
+
+// Handle escape key to close PDF viewer
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showPdfViewer.value) {
+    closePdf()
+  }
+}
+
 onMounted(() => {
   fetchEntry()
   fetchCollections()
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
 })
 
 const toggleRead = async () => {
@@ -85,11 +108,6 @@ const saveNotes = async () => {
   } catch (e) {
     console.error('Failed to save notes:', e)
   }
-}
-
-const openPdf = () => {
-  if (!entry.value?.file_path) return
-  window.open(`file://${entry.value.file_path}`, '_blank')
 }
 
 const copyBibtex = async () => {
@@ -240,6 +258,23 @@ const allFields = computed(() => {
         </article>
       </template>
     </main>
+
+    <!-- PDF Viewer Modal -->
+    <teleport to="body">
+      <div v-if="showPdfViewer" class="pdf-modal-overlay" @click.self="closePdf">
+        <div class="pdf-modal">
+          <header class="pdf-modal-header">
+            <span class="pdf-title">{{ entry?.title }}</span>
+            <button class="pdf-close" @click="closePdf">✕ Close</button>
+          </header>
+          <iframe 
+            :src="pdfUrl" 
+            class="pdf-frame"
+            title="PDF Viewer"
+          ></iframe>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -460,5 +495,82 @@ code {
   padding: 2px 4px;
   background: var(--border);
   border-radius: 3px;
+}
+
+/* PDF Viewer Modal */
+.pdf-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pdf-modal {
+  width: 95vw;
+  height: 95vh;
+  max-width: 1400px;
+  background: var(--bg-surface);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.pdf-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.pdf-title {
+  font-weight: 500;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: var(--space-4);
+}
+
+.pdf-close {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.pdf-close:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.pdf-frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+  height: 100%;
+  background: #333;
 }
 </style>
