@@ -16,7 +16,7 @@ from app.exceptions import FolioError
 from app.logging import get_logger, setup_logging
 from app.middleware import RequestIDMiddleware
 from app.models import Author, Collection, Entry
-from app.routers import admin, collections, entries, ingest, search
+from app.routers import admin, authors, collections, entries, ingest, search
 from app.services.sync import is_available as meili_available
 
 logger = get_logger(__name__)
@@ -89,6 +89,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(admin.router, prefix="/api")
+app.include_router(authors.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
 app.include_router(collections.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")

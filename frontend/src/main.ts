@@ -35,6 +35,16 @@ const router = createRouter({
             path: '/browse',
             name: 'browse',
             component: () => import('./views/Browse.vue')
+        },
+        {
+            path: '/authors',
+            name: 'authors',
+            component: () => import('./views/Authors.vue')
+        },
+        {
+            path: '/authors/:id',
+            name: 'author-detail',
+            component: () => import('./views/AuthorDetail.vue')
         }
     ]
 })

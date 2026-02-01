@@ -169,6 +169,25 @@ export interface ImportResult {
     errors: string[]
 }
 
+// Author types
+export interface AuthorListItem {
+    id: string
+    name: string
+    entry_count: number
+}
+
+export interface AuthorDetail extends AuthorListItem { }
+
+export interface AuthorEntryItem {
+    id: string
+    citation_key: string
+    entry_type: string
+    title: string
+    year: number | null
+    venue: string | null
+    read: boolean
+}
+
 // Error handler
 function handleError(error: unknown): never {
     const axiosError = error as AxiosError<{ detail?: string }>
@@ -375,6 +394,53 @@ export const api = {
     async triggerIngest(directory?: string): Promise<{ imported: number; errors: number; total_parsed: number }> {
         try {
             const { data } = await client.post('/admin/ingest', { directory })
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    // Author API methods
+    async listAuthors(
+        limit = 100,
+        offset = 0,
+        sortBy = 'name',
+        sortOrder = 'asc'
+    ): Promise<AuthorListItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get('/authors', {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getAuthor(id: string): Promise<AuthorDetail> {
+        try {
+            const { data } = await withRetry(() => client.get(`/authors/${id}`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getAuthorEntries(
+        id: string,
+        limit = 50,
+        offset = 0,
+        sortBy = 'year',
+        sortOrder = 'desc'
+    ): Promise<AuthorEntryItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get(`/authors/${id}/entries`, {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
             return data
         } catch (error) {
             return handleError(error)
