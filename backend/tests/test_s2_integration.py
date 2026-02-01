@@ -4,7 +4,10 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import select
 
-from app.models import Entry, S2Paper
+from app.models import Entry
+from app.models import S2Paper as S2PaperModel
+from app.schemas.s2 import S2Author, S2Embedding, S2TLDR
+from app.schemas.s2 import S2Paper as S2PaperSchema
 from app.services.s2 import S2Service
 
 
@@ -42,17 +45,22 @@ async def test_resolve_s2_id_search(db_session):
 
 @pytest.mark.asyncio
 async def test_upsert_s2_paper(db_session):
+    import uuid
+
     service = S2Service()
 
-    # Mock data structure using SimpleNamespace
-    mock_data = SimpleNamespace(
-        paperId="s2-123",
+    # Use unique ID for test isolation
+    test_s2_id = f"s2-upsert-{uuid.uuid4().hex[:8]}"
+
+    # Use proper Pydantic models that support model_dump()
+    mock_data = S2PaperSchema(
+        paperId=test_s2_id,
         title="Rich Paper",
         year=2024,
         venue="ArXiv",
-        authors=[SimpleNamespace(authorId="a1", name="Alice")],
-        tldr=SimpleNamespace(model="v1", text="Startling discovery."),
-        embedding=SimpleNamespace(model="v1", vector=[0.1, 0.2]),
+        authors=[S2Author(authorId="a1", name="Alice")],
+        tldr=S2TLDR(model="v1", text="Startling discovery."),
+        embedding=S2Embedding(model="v1", vector=[0.1, 0.2]),
         citationCount=10,
         referenceCount=5,
         influentialCitationCount=1,
@@ -61,15 +69,15 @@ async def test_upsert_s2_paper(db_session):
         fieldsOfStudy=["CS"],
         publicationTypes=["Journal"],
         externalIds={"ArXiv": "1234.5678"},
-        citations=[],
-        references=[],
     )
 
     await service._upsert_s2_paper(db_session, mock_data)
     await db_session.commit()
 
-    # Verify
-    result = await db_session.execute(select(S2Paper).where(S2Paper.s2_id == "s2-123"))
+    # Verify using the SQLAlchemy model
+    result = await db_session.execute(
+        select(S2PaperModel).where(S2PaperModel.s2_id == test_s2_id)
+    )
     paper = result.scalar_one()
     assert paper.title == "Rich Paper"
     assert paper.tldr["text"] == "Startling discovery."

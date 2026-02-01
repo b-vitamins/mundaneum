@@ -61,6 +61,81 @@ class ReadRequest(BaseModel):
     read: bool
 
 
+@router.get("", response_model=list[EntryResponse])
+async def list_entries(
+    limit: int = 50,
+    offset: int = 0,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all entries with pagination and sorting.
+
+    Query params:
+    - limit: max entries to return (default 50, max 200)
+    - offset: skip this many entries
+    - sort_by: field to sort by (title, year, created_at, updated_at)
+    - sort_order: asc or desc
+    """
+    limit = min(limit, 200)  # Cap at 200
+
+    # Map sortable fields
+    sort_fields = {
+        "title": Entry.title,
+        "year": Entry.year,
+        "created_at": Entry.created_at,
+        "updated_at": Entry.updated_at,
+    }
+    sort_col = sort_fields.get(sort_by, Entry.created_at)
+
+    if sort_order == "asc":
+        order = sort_col.asc()
+    else:
+        order = sort_col.desc()
+
+    result = await db.execute(
+        select(Entry)
+        .options(selectinload(Entry.authors).selectinload(EntryAuthor.author))
+        .order_by(order)
+        .limit(limit)
+        .offset(offset)
+    )
+    entries = result.scalars().all()
+
+    response = []
+    for entry in entries:
+        authors = [
+            ea.author.name for ea in sorted(entry.authors, key=lambda x: x.position)
+        ]
+        required = entry.required_fields or {}
+        optional = entry.optional_fields or {}
+        venue = (
+            required.get("journal")
+            or required.get("booktitle")
+            or optional.get("journal")
+            or optional.get("booktitle")
+        )
+        abstract = optional.get("abstract")
+
+        response.append(
+            EntryResponse(
+                id=str(entry.id),
+                citation_key=entry.citation_key,
+                entry_type=entry.entry_type.value,
+                title=entry.title,
+                year=entry.year,
+                authors=authors,
+                venue=venue,
+                abstract=abstract,
+                file_path=entry.file_path,
+                read=entry.read or False,
+            )
+        )
+
+    return response
+
+
 @router.get("/{entry_id}", response_model=EntryDetailResponse)
 async def get_entry(
     entry_id: UUID,
