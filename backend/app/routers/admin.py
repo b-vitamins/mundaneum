@@ -19,7 +19,6 @@ from app.config import settings
 from app.database import check_db_health, get_db
 from app.logging import get_logger
 from app.models import Collection, CollectionEntry, Entry
-from app.services.ingest import ingest_directory
 from app.services.sync import is_available as meili_available
 
 logger = get_logger(__name__)
@@ -248,33 +247,49 @@ async def import_user_state(
 
 
 # ============================================================================
-# Ingest Endpoint
+# Ingest Endpoints (Background Worker)
 # ============================================================================
 
 
-@router.post("/ingest", response_model=IngestResponse)
-async def trigger_ingest(
+@router.get("/ingest/status")
+async def get_ingest_status():
+    """
+    Get current ingestion worker status.
+
+    Returns progress information for background ingestion.
+    """
+    from app.services.worker import worker
+
+    return worker.get_status()
+
+
+@router.post("/ingest/start")
+async def start_ingest(
     request: IngestRequest,
-    db: AsyncSession = Depends(get_db),
 ):
     """
-    Trigger a bulk ingest from the BibTeX directory.
+    Manually trigger background ingestion.
 
-    This is a synchronous operation that may take a while for large libraries.
+    If already running, returns current status without restarting.
     """
-    directory = request.directory or settings.bib_directory
+    from app.services.worker import worker
 
+    if worker.is_running:
+        return {"message": "Ingestion already running", **worker.get_status()}
+
+    directory = request.directory or "/bibliography"
     path = Path(directory)
+
     if not path.exists() or not path.is_dir():
         return JSONResponse(
             status_code=400,
             content={"detail": f"Directory not found: {directory}"},
         )
 
-    logger.info("Starting ingest from: %s", directory)
-    result = await ingest_directory(db, directory)
+    # Start background ingestion
+    await worker.start(path)
 
-    return IngestResponse(**result)
+    return {"message": "Ingestion started", **worker.get_status()}
 
 
 # ============================================================================

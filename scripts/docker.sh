@@ -9,7 +9,7 @@ FOLIO_PORT="${FOLIO_PORT:-8080}"
 DB_PORT="${DB_PORT:-15432}"
 MEILI_PORT="${MEILI_PORT:-17700}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-folio}"
-BIB_DIRECTORY="${BIB_DIRECTORY:-$(pwd)/data}"
+BIB_DIRECTORY="${BIB_DIRECTORY:-}"
 NETWORK_NAME="folio-net"
 
 # Get real Docker CLI (Guix wraps 'docker' as podman)
@@ -97,6 +97,16 @@ start_meilisearch() {
 
 start_folio() {
     echo "Starting Folio..."
+    
+    # Prepare volume mounts
+    local mounts=""
+    
+    # Bibliography mount (optional, for importing)
+    if [ -n "$BIB_DIRECTORY" ] && [ -d "$BIB_DIRECTORY" ]; then
+        mounts="$mounts -v $BIB_DIRECTORY:/bibliography:ro"
+        echo "  Bibliography: $BIB_DIRECTORY → /bibliography"
+    fi
+    
     $DOCKER run -d \
         --name folio \
         --network host \
@@ -104,8 +114,7 @@ start_folio() {
         -e DB_PORT=$DB_PORT \
         -e DATABASE_URL=postgresql://folio:$POSTGRES_PASSWORD@127.0.0.1:$DB_PORT/folio \
         -e MEILI_URL=http://127.0.0.1:$MEILI_PORT \
-        -e BIB_DIRECTORY=/data \
-        -v "$BIB_DIRECTORY:/data:ro" \
+        $mounts \
         folio
 }
 

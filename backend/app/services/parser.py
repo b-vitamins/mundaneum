@@ -5,6 +5,7 @@ Scans directories recursively for .bib files and parses entries
 according to the official BibTeX specification.
 """
 
+import re
 import unicodedata
 from pathlib import Path
 from typing import Iterator
@@ -37,6 +38,194 @@ REQUIRED_FIELDS: dict[str, set[str]] = {
     "techreport": {"author", "title", "institution", "year"},
     "unpublished": {"author", "title", "note"},
 }
+
+# Venue normalization: slug -> (display_name, category, aliases)
+VENUE_DATA: dict[str, tuple[str, str, list[str]]] = {
+    # Conferences
+    "neurips": (
+        "NeurIPS",
+        "CONFERENCE",
+        [
+            "neurips",
+            "nips",
+            "advances in neural information processing systems",
+            "neural information processing systems",
+        ],
+    ),
+    "icml": (
+        "ICML",
+        "CONFERENCE",
+        ["icml", "international conference on machine learning"],
+    ),
+    "iclr": (
+        "ICLR",
+        "CONFERENCE",
+        ["iclr", "international conference on learning representations"],
+    ),
+    "cvpr": (
+        "CVPR",
+        "CONFERENCE",
+        [
+            "cvpr",
+            "ieee/cvf conference on computer vision and pattern recognition",
+            "computer vision and pattern recognition",
+        ],
+    ),
+    "iccv": (
+        "ICCV",
+        "CONFERENCE",
+        ["iccv", "ieee/cvf international conference on computer vision"],
+    ),
+    "eccv": ("ECCV", "CONFERENCE", ["eccv", "european conference on computer vision"]),
+    "aaai": (
+        "AAAI",
+        "CONFERENCE",
+        ["aaai", "aaai conference on artificial intelligence"],
+    ),
+    "ijcai": (
+        "IJCAI",
+        "CONFERENCE",
+        ["ijcai", "international joint conference on artificial intelligence"],
+    ),
+    "acl": (
+        "ACL",
+        "CONFERENCE",
+        ["acl", "annual meeting of the association for computational linguistics"],
+    ),
+    "emnlp": (
+        "EMNLP",
+        "CONFERENCE",
+        ["emnlp", "empirical methods in natural language processing"],
+    ),
+    "naacl": (
+        "NAACL",
+        "CONFERENCE",
+        [
+            "naacl",
+            "north american chapter of the association for computational linguistics",
+        ],
+    ),
+    "aistats": (
+        "AISTATS",
+        "CONFERENCE",
+        ["aistats", "artificial intelligence and statistics"],
+    ),
+    "uai": ("UAI", "CONFERENCE", ["uai", "uncertainty in artificial intelligence"]),
+    "colt": ("COLT", "CONFERENCE", ["colt", "conference on learning theory"]),
+    "kdd": ("KDD", "CONFERENCE", ["kdd", "knowledge discovery and data mining"]),
+    "www": ("WWW", "CONFERENCE", ["www", "the web conference", "world wide web"]),
+    "sigir": (
+        "SIGIR",
+        "CONFERENCE",
+        ["sigir", "research and development in information retrieval"],
+    ),
+    "icra": (
+        "ICRA",
+        "CONFERENCE",
+        ["icra", "ieee international conference on robotics and automation"],
+    ),
+    "iros": (
+        "IROS",
+        "CONFERENCE",
+        ["iros", "ieee/rsj international conference on intelligent robots and systems"],
+    ),
+    "corl": ("CoRL", "CONFERENCE", ["corl", "conference on robot learning"]),
+    # Journals
+    "jmlr": ("JMLR", "JOURNAL", ["jmlr", "journal of machine learning research"]),
+    "tmlr": ("TMLR", "JOURNAL", ["tmlr", "transactions on machine learning research"]),
+    "nature": ("Nature", "JOURNAL", ["nature"]),
+    "science": ("Science", "JOURNAL", ["science"]),
+    "prl": ("PRL", "JOURNAL", ["prl", "physical review letters"]),
+    "pre": ("PRE", "JOURNAL", ["pre", "physical review e"]),
+    "prx": ("PRX", "JOURNAL", ["prx", "physical review x"]),
+    "rmp": ("RMP", "JOURNAL", ["rmp", "reviews of modern physics"]),
+    "pnas": (
+        "PNAS",
+        "JOURNAL",
+        ["pnas", "proceedings of the national academy of sciences"],
+    ),
+    "tpami": (
+        "TPAMI",
+        "JOURNAL",
+        ["tpami", "ieee transactions on pattern analysis and machine intelligence"],
+    ),
+    "neco": ("Neural Computation", "JOURNAL", ["neco", "neural computation"]),
+    "tacl": (
+        "TACL",
+        "JOURNAL",
+        ["tacl", "transactions of the association for computational linguistics"],
+    ),
+}
+
+# Build reverse lookup: normalized alias -> venue slug
+_VENUE_ALIAS_MAP: dict[str, str] = {}
+for slug, (_, _, aliases) in VENUE_DATA.items():
+    for alias in aliases:
+        _VENUE_ALIAS_MAP[alias.lower()] = slug
+
+
+def parse_folio_comment(content: str) -> dict[str, str | list[str]]:
+    """
+    Parse @COMMENT{folio: ...} blocks from raw file content.
+
+    Returns dict with keys like 'subject', 'topics'.
+    Topics are returned as a list (split by |).
+    """
+    result: dict[str, str | list[str]] = {}
+
+    # Match @COMMENT{folio: ...} - case insensitive
+    pattern = r"@COMMENT\{folio:\s*([^}]+)\}"
+    match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+
+    if not match:
+        return result
+
+    # Parse key = value pairs
+    folio_content = match.group(1)
+    for line in folio_content.split("\n"):
+        line = line.strip()
+        if "=" in line:
+            key, value = line.split("=", 1)
+            key = key.strip().lower()
+            value = value.strip().rstrip(",")
+
+            if key == "topics":
+                # Split by | for multiple topics
+                topics = [t.strip() for t in value.split("|")]
+                result["topics"] = [t for t in topics if t]
+            else:
+                result[key] = value
+
+    return result
+
+
+def normalize_venue(venue_str: str) -> str | None:
+    """
+    Normalize a venue string to a known slug.
+
+    Returns venue slug or None if not recognized.
+    """
+    if not venue_str:
+        return None
+
+    # Normalize: lowercase, strip
+    normalized = venue_str.lower().strip()
+
+    # Direct lookup
+    if normalized in _VENUE_ALIAS_MAP:
+        return _VENUE_ALIAS_MAP[normalized]
+
+    # Check if any alias is a substring
+    for alias, slug in _VENUE_ALIAS_MAP.items():
+        if alias in normalized or normalized in alias:
+            return slug
+
+    return None
+
+
+def get_venue_info(slug: str) -> tuple[str, str, list[str]] | None:
+    """Get venue display name, category, and aliases for a slug."""
+    return VENUE_DATA.get(slug)
 
 
 def normalize_name(name: str) -> str:
@@ -83,13 +272,25 @@ def parse_bib_file(filepath: Path) -> list[dict]:
     - required_fields: dict
     - optional_fields: dict
     - source_file: str
+    - subject: str | None (from file-level @COMMENT)
+    - topics: list[str] (from file-level @COMMENT)
+    - venue_slug: str | None (normalized from booktitle/journal)
     """
     parser = BibTexParser(common_strings=True)
     parser.customization = convert_to_unicode
 
     try:
         with open(filepath, encoding="utf-8", errors="replace") as f:
-            bib_database = bibtexparser.load(f, parser=parser)
+            raw_content = f.read()
+    except Exception as e:
+        logger.error("Error reading %s: %s", filepath, e)
+        return []
+
+    # Parse file-level @COMMENT{folio: ...} metadata
+    file_metadata = parse_folio_comment(raw_content)
+
+    try:
+        bib_database = bibtexparser.loads(raw_content, parser=parser)
     except Exception as e:
         logger.error("Error parsing %s: %s", filepath, e)
         return []
@@ -97,7 +298,7 @@ def parse_bib_file(filepath: Path) -> list[dict]:
     entries = []
     for entry in bib_database.entries:
         try:
-            parsed = parse_entry(entry, str(filepath))
+            parsed = parse_entry(entry, str(filepath), file_metadata)
             if parsed:
                 entries.append(parsed)
         except Exception as e:
@@ -111,7 +312,11 @@ def parse_bib_file(filepath: Path) -> list[dict]:
     return entries
 
 
-def parse_entry(entry: dict, source_file: str) -> dict | None:
+def parse_entry(
+    entry: dict,
+    source_file: str,
+    file_metadata: dict[str, str | list[str]] | None = None,
+) -> dict | None:
     """Parse a single BibTeX entry into our schema."""
     entry_type_str = entry.get("ENTRYTYPE", "").lower()
     citation_key = entry.get("ID", "")
@@ -119,6 +324,8 @@ def parse_entry(entry: dict, source_file: str) -> dict | None:
     if not citation_key:
         logger.debug("Skipping entry without ID in %s", source_file)
         return None
+
+    file_metadata = file_metadata or {}
 
     # Validate entry type
     try:
@@ -147,6 +354,16 @@ def parse_entry(entry: dict, source_file: str) -> dict | None:
     # Parse authors
     authors = parse_authors(entry.get("author", ""))
 
+    # Extract venue from booktitle (conferences) or journal (articles)
+    venue_slug: str | None = None
+    booktitle = entry.get("booktitle", "")
+    journal = entry.get("journal", "")
+
+    if booktitle:
+        venue_slug = normalize_venue(booktitle)
+    elif journal:
+        venue_slug = normalize_venue(journal)
+
     # Separate required vs optional fields
     required_set = REQUIRED_FIELDS.get(entry_type_str, set())
     required_fields: dict[str, str] = {}
@@ -162,6 +379,14 @@ def parse_entry(entry: dict, source_file: str) -> dict | None:
         else:
             optional_fields[key] = value
 
+    # Get file-level metadata
+    subject = file_metadata.get("subject")
+    topics = file_metadata.get("topics", [])
+    if isinstance(subject, list):
+        subject = subject[0] if subject else None
+    if isinstance(topics, str):
+        topics = [topics]
+
     return {
         "citation_key": citation_key,
         "entry_type": entry_type_enum,
@@ -172,6 +397,10 @@ def parse_entry(entry: dict, source_file: str) -> dict | None:
         "required_fields": required_fields,
         "optional_fields": optional_fields,
         "source_file": source_file,
+        # New metadata fields
+        "subject": subject,
+        "topics": topics,
+        "venue_slug": venue_slug,
     }
 
 

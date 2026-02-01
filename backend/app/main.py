@@ -16,10 +16,24 @@ from app.exceptions import FolioError
 from app.logging import get_logger, setup_logging
 from app.middleware import RequestIDMiddleware
 from app.models import Author, Collection, Entry
-from app.routers import admin, authors, collections, entries, ingest, search
+from app.routers import (
+    admin,
+    authors,
+    collections,
+    entries,
+    ingest,
+    search,
+    subjects,
+    topics,
+    venues,
+)
 from app.services.sync import is_available as meili_available
+from app.services.worker import worker as ingestion_worker
 
 logger = get_logger(__name__)
+
+# Default bibliography path inside container
+BIBLIOGRAPHY_PATH = "/bibliography"
 
 
 @asynccontextmanager
@@ -39,9 +53,23 @@ async def lifespan(app: FastAPI):
     if not meili_ok:
         logger.warning("Meilisearch is not available - search will be degraded")
 
+    # Start background ingestion if bibliography directory exists
+    from pathlib import Path
+
+    bib_dir = Path(BIBLIOGRAPHY_PATH)
+    if bib_dir.exists() and bib_dir.is_dir():
+        logger.info("Bibliography directory found, starting background ingestion")
+        await ingestion_worker.start(bib_dir)
+    else:
+        logger.info(
+            "No bibliography directory at %s, skipping auto-ingest", BIBLIOGRAPHY_PATH
+        )
+
     yield
 
+    # Shutdown
     logger.info("Shutting down Folio")
+    await ingestion_worker.stop()
     await engine.dispose()
 
 
@@ -94,6 +122,9 @@ app.include_router(entries.router, prefix="/api")
 app.include_router(collections.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(search.router, prefix="/api/search")
+app.include_router(venues.router, prefix="/api")
+app.include_router(subjects.router, prefix="/api")
+app.include_router(topics.router, prefix="/api")
 
 
 @app.get("/health")

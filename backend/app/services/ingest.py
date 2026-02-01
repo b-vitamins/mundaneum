@@ -11,8 +11,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging import get_logger
-from app.models import Author, Entry, EntryAuthor
-from app.services.parser import normalize_name, scan_directory
+from app.models import (
+    Author,
+    Entry,
+    EntryAuthor,
+    EntryTopic,
+    Subject,
+    Topic,
+    Venue,
+    VenueCategory,
+)
+from app.services.parser import (
+    get_venue_info,
+    normalize_name,
+    scan_directory,
+)
 from app.services.sync import (
     MeilisearchUnavailableError,
     ensure_index,
@@ -39,6 +52,68 @@ async def get_or_create_author(session: AsyncSession, name: str) -> Author:
     return author
 
 
+async def get_or_create_venue(session: AsyncSession, slug: str) -> Venue | None:
+    """Get existing venue or create from known venues data."""
+    if not slug:
+        return None
+
+    result = await session.execute(select(Venue).where(Venue.slug == slug))
+    venue = result.scalar_one_or_none()
+
+    if not venue:
+        venue_info = get_venue_info(slug)
+        if venue_info:
+            name, category, aliases = venue_info
+            venue = Venue(
+                slug=slug,
+                name=name,
+                category=VenueCategory(category),
+                aliases=aliases,
+            )
+            session.add(venue)
+            await session.flush()
+        else:
+            return None
+
+    return venue
+
+
+async def get_or_create_subject(session: AsyncSession, slug: str) -> Subject | None:
+    """Get existing subject or create new one."""
+    if not slug:
+        return None
+
+    result = await session.execute(select(Subject).where(Subject.slug == slug))
+    subject = result.scalar_one_or_none()
+
+    if not subject:
+        # Derive display name from slug
+        name = slug.replace("-", " ").replace("_", " ").title()
+        subject = Subject(slug=slug, name=name)
+        session.add(subject)
+        await session.flush()
+
+    return subject
+
+
+async def get_or_create_topic(session: AsyncSession, slug: str) -> Topic | None:
+    """Get existing topic or create new one."""
+    if not slug:
+        return None
+
+    result = await session.execute(select(Topic).where(Topic.slug == slug))
+    topic = result.scalar_one_or_none()
+
+    if not topic:
+        # Derive display name from slug
+        name = slug.replace("-", " ").replace("_", " ").title()
+        topic = Topic(slug=slug, name=name)
+        session.add(topic)
+        await session.flush()
+
+    return topic
+
+
 async def ingest_entry(session: AsyncSession, entry_data: dict) -> Entry | None:
     """
     Import a single entry into the database.
@@ -50,6 +125,10 @@ async def ingest_entry(session: AsyncSession, entry_data: dict) -> Entry | None:
     if not citation_key:
         logger.warning("Skipping entry without citation_key")
         return None
+
+    # Get/create related entities
+    venue = await get_or_create_venue(session, entry_data.get("venue_slug"))
+    subject = await get_or_create_subject(session, entry_data.get("subject"))
 
     # Check if entry already exists
     result = await session.execute(
@@ -66,10 +145,15 @@ async def ingest_entry(session: AsyncSession, entry_data: dict) -> Entry | None:
         existing.required_fields = entry_data["required_fields"]
         existing.optional_fields = entry_data["optional_fields"]
         existing.source_file = entry_data["source_file"]
+        existing.venue_id = venue.id if venue else None
+        existing.subject_id = subject.id if subject else None
 
-        # Clear existing authors
+        # Clear existing authors and topics
         await session.execute(
             EntryAuthor.__table__.delete().where(EntryAuthor.entry_id == existing.id)
+        )
+        await session.execute(
+            EntryTopic.__table__.delete().where(EntryTopic.entry_id == existing.id)
         )
         entry = existing
     else:
@@ -83,6 +167,8 @@ async def ingest_entry(session: AsyncSession, entry_data: dict) -> Entry | None:
             required_fields=entry_data["required_fields"],
             optional_fields=entry_data["optional_fields"],
             source_file=entry_data["source_file"],
+            venue_id=venue.id if venue else None,
+            subject_id=subject.id if subject else None,
         )
         session.add(entry)
         await session.flush()
@@ -113,6 +199,23 @@ async def ingest_entry(session: AsyncSession, entry_data: dict) -> Entry | None:
             position=position,
         )
         session.add(entry_author)
+
+    # Add topics (many-to-many)
+    for topic_slug in entry_data.get("topics", []):
+        topic = await get_or_create_topic(session, topic_slug)
+        if topic:
+            # Check if relationship already exists
+            existing_rel = await session.execute(
+                select(EntryTopic).where(
+                    EntryTopic.entry_id == entry.id,
+                    EntryTopic.topic_id == topic.id,
+                )
+            )
+            if existing_rel.scalar_one_or_none():
+                continue
+
+            entry_topic = EntryTopic(entry_id=entry.id, topic_id=topic.id)
+            session.add(entry_topic)
 
     return entry
 
