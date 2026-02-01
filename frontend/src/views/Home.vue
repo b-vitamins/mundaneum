@@ -51,8 +51,9 @@ onMounted(async () => {
       <nav class="quick-links">
         <router-link to="/browse" class="quick-link">Browse</router-link>
         <router-link to="/authors" class="quick-link">Authors</router-link>
-        <router-link to="/search?filter=recent" class="quick-link">Recent</router-link>
-        <router-link to="/search?filter=unread" class="quick-link">Unread</router-link>
+        <router-link to="/venues" class="quick-link">Venues</router-link>
+        <router-link to="/subjects" class="quick-link">Subjects</router-link>
+        <router-link to="/topics" class="quick-link">Topics</router-link>
         <router-link to="/collections" class="quick-link">Collections</router-link>
         <router-link to="/admin" class="quick-link admin-link">Admin</router-link>
       </nav>

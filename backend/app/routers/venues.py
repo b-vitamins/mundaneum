@@ -184,21 +184,14 @@ async def get_venue_entries(
 
     query = query.offset(offset).limit(limit)
 
+    # Eager load authors
+    from app.models import EntryAuthor
+    from sqlalchemy.orm import selectinload, joinedload
+
+    query = query.options(selectinload(Entry.authors).joinedload(EntryAuthor.author))
+
     result = await db.execute(query)
     entries = result.scalars().all()
-
-    # We need to load authors for the response model
-    # Note: This might be lazy loaded, strictly we should selectinload authors
-    # but for simple scalar access it might work or we update query
-
-    # Better to eager load for performance
-    from sqlalchemy.orm import selectinload
-
-    query = query.options(selectinload(Entry.authors))
-
-    # Re-execute with options if we want to be safe, but actually let's just
-    # update the query above before execution in future refactors.
-    # For now, let's keep it simple as Entry model defaults might not include authors.
 
     return [
         VenueEntryItem(

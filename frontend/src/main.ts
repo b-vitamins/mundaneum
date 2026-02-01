@@ -45,6 +45,36 @@ const router = createRouter({
             path: '/authors/:id',
             name: 'author-detail',
             component: () => import('./views/AuthorDetail.vue')
+        },
+        {
+            path: '/venues',
+            name: 'venues',
+            component: () => import('./views/Venues.vue')
+        },
+        {
+            path: '/venues/:slug',
+            name: 'venue-detail',
+            component: () => import('./views/VenueDetail.vue')
+        },
+        {
+            path: '/subjects',
+            name: 'subjects',
+            component: () => import('./views/Subjects.vue')
+        },
+        {
+            path: '/subjects/:slug',
+            name: 'subject-detail',
+            component: () => import('./views/SubjectDetail.vue')
+        },
+        {
+            path: '/topics',
+            name: 'topics',
+            component: () => import('./views/Topics.vue')
+        },
+        {
+            path: '/topics/:slug',
+            name: 'topic-detail',
+            component: () => import('./views/TopicDetail.vue')
         }
     ]
 })

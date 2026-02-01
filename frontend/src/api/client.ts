@@ -188,6 +188,49 @@ export interface AuthorEntryItem {
     read: boolean
 }
 
+// Entity types (Venue, Subject, Topic)
+export interface VenueListItem {
+    id: string
+    slug: string
+    name: string
+    category: string
+    entry_count: number
+}
+
+export interface VenueDetail extends VenueListItem {
+    aliases: string[]
+    url?: string
+}
+
+export interface EntityEntryItem {
+    id: string
+    citation_key: string
+    entry_type: string
+    title: string
+    year: number | null
+    authors: string[]
+    venue: string | null
+    read: boolean
+}
+
+export interface SubjectListItem {
+    id: string
+    slug: string
+    name: string
+    entry_count: number
+}
+
+export interface SubjectDetail extends SubjectListItem { }
+
+export interface TopicListItem {
+    id: string
+    slug: string
+    name: string
+    entry_count: number
+}
+
+export interface TopicDetail extends TopicListItem { }
+
 // Error handler
 function handleError(error: unknown): never {
     const axiosError = error as AxiosError<{ detail?: string }>
@@ -438,6 +481,114 @@ export const api = {
         try {
             const { data } = await withRetry(() =>
                 client.get(`/authors/${id}/entries`, {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    // Venue methods
+    async listVenues(limit = 100, offset = 0, sortBy = 'name', sortOrder = 'asc', category?: string): Promise<VenueListItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get('/venues', {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder, category }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getVenue(slug: string): Promise<VenueDetail> {
+        try {
+            const { data } = await withRetry(() => client.get(`/venues/${slug}`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getVenueEntries(slug: string, limit = 50, offset = 0, sortBy = 'year', sortOrder = 'desc'): Promise<EntityEntryItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get(`/venues/${slug}/entries`, {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    // Subject methods
+    async listSubjects(limit = 100, offset = 0, sortBy = 'name', sortOrder = 'asc'): Promise<SubjectListItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get('/subjects', {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getSubject(slug: string): Promise<SubjectDetail> {
+        try {
+            const { data } = await withRetry(() => client.get(`/subjects/${slug}`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getSubjectEntries(slug: string, limit = 50, offset = 0, sortBy = 'year', sortOrder = 'desc'): Promise<EntityEntryItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get(`/subjects/${slug}/entries`, {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    // Topic methods
+    async listTopics(limit = 100, offset = 0, sortBy = 'name', sortOrder = 'asc'): Promise<TopicListItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get('/topics', {
+                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                })
+            )
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getTopic(slug: string): Promise<TopicDetail> {
+        try {
+            const { data } = await withRetry(() => client.get(`/topics/${slug}`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getTopicEntries(slug: string, limit = 50, offset = 0, sortBy = 'year', sortOrder = 'desc'): Promise<EntityEntryItem[]> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get(`/topics/${slug}/entries`, {
                     params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
                 })
             )
