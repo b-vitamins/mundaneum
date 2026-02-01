@@ -119,6 +119,43 @@ export interface S2Paper {
     intents: string[]
 }
 
+// Admin API types
+export interface AdminHealth {
+    status: string
+    database: string
+    search: string
+    bib_directory: string
+    bib_files_count: number
+}
+
+export interface ExportedEntry {
+    citation_key: string
+    notes: string | null
+    read: boolean
+}
+
+export interface ExportedCollection {
+    name: string
+    description: string | null
+    sort_order: number
+    entry_keys: string[]
+}
+
+export interface ExportData {
+    version: string
+    exported_at: string
+    entries: ExportedEntry[]
+    collections: ExportedCollection[]
+}
+
+export interface ImportResult {
+    entries_updated: number
+    entries_skipped: number
+    collections_created: number
+    collections_updated: number
+    errors: string[]
+}
+
 // Error handler
 function handleError(error: unknown): never {
     const axiosError = error as AxiosError<{ detail?: string }>
@@ -270,6 +307,43 @@ export const api = {
     async getReferences(id: string): Promise<S2Paper[]> {
         try {
             const { data } = await withRetry(() => client.get(`/entries/${id}/references`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    // Admin API methods
+    async getAdminHealth(): Promise<AdminHealth> {
+        try {
+            const { data } = await withRetry(() => client.get('/admin/health'))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async exportBackup(): Promise<ExportData> {
+        try {
+            const { data } = await withRetry(() => client.get('/admin/export'))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async importBackup(backup: ExportData): Promise<ImportResult> {
+        try {
+            const { data } = await client.post('/admin/import', backup)
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async triggerIngest(directory?: string): Promise<{ imported: number; errors: number; total_parsed: number }> {
+        try {
+            const { data } = await client.post('/admin/ingest', { directory })
             return data
         } catch (error) {
             return handleError(error)

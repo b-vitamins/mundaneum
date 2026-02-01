@@ -52,6 +52,7 @@ onMounted(async () => {
         <router-link to="/search?filter=recent" class="quick-link">Recent</router-link>
         <router-link to="/search?filter=unread" class="quick-link">Unread</router-link>
         <router-link to="/collections" class="quick-link">Collections</router-link>
+        <router-link to="/admin" class="quick-link admin-link">Admin</router-link>
       </nav>
       
       <p class="hint">Press <kbd>/</kbd> to search</p>
