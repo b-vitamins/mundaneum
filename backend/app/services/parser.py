@@ -13,6 +13,7 @@ from typing import Iterator
 import bibtexparser
 from bibtexparser.bparser import BibTexParser
 from bibtexparser.customization import convert_to_unicode
+from pylatexenc.latex2text import LatexNodes2Text
 
 from app.logging import get_logger
 from app.models import EntryType
@@ -228,6 +229,42 @@ def get_venue_info(slug: str) -> tuple[str, str, list[str]] | None:
     return VENUE_DATA.get(slug)
 
 
+# Singleton converter for LaTeX to text
+_latex_converter = LatexNodes2Text()
+
+
+def clean_latex_string(text: str) -> str:
+    """
+    Clean LaTeX encoded strings to proper Unicode.
+
+    Handles common LaTeX patterns like:
+    - \'{e} -> é
+    - \"{o} -> ö
+    - {\ss} -> ß
+    - Curly brace wrappers: {Something} -> Something
+
+    Falls back to original text if conversion fails.
+    """
+    if not text:
+        return ""
+
+    try:
+        # Use pylatexenc for robust LaTeX -> Unicode conversion
+        cleaned = _latex_converter.latex_to_text(text)
+
+        # Clean up any remaining curly braces (common in BibTeX titles)
+        cleaned = re.sub(r"\{([^}]*)\}", r"\1", cleaned)
+
+        # Normalize whitespace
+        cleaned = " ".join(cleaned.split())
+
+        return cleaned.strip()
+    except Exception:
+        # Fallback: just remove curly braces and return
+        fallback = re.sub(r"\{([^}]*)\}", r"\1", text)
+        return " ".join(fallback.split()).strip()
+
+
 def normalize_name(name: str) -> str:
     """Normalize author name: lowercase, remove diacritics."""
     if not name:
@@ -244,8 +281,8 @@ def parse_authors(author_string: str) -> list[str]:
         return []
     # BibTeX separates authors with " and "
     authors = author_string.split(" and ")
-    # Clean up each author name
-    return [a.strip() for a in authors if a.strip()]
+    # Clean up each author name and convert LaTeX to Unicode
+    return [clean_latex_string(a) for a in authors if a.strip()]
 
 
 def find_bib_files(directory: Path) -> Iterator[Path]:
@@ -335,8 +372,8 @@ def parse_entry(
         entry_type_enum = EntryType.MISC
         logger.debug("Unknown entry type '%s', defaulting to misc", entry_type_str)
 
-    # Extract promoted fields
-    title = entry.get("title", "").strip()
+    # Extract promoted fields and clean LaTeX encoding
+    title = clean_latex_string(entry.get("title", ""))
     year_str = entry.get("year", "")
 
     year: int | None = None

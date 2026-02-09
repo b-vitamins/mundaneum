@@ -28,7 +28,34 @@ export function useKeyboard() {
         // Single key shortcuts
         if (e.key === '/') {
             e.preventDefault()
-            router.push('/search')
+            e.stopPropagation()
+            e.stopImmediatePropagation()
+
+            // Check if there's a search input on the current page first
+            const searchInput = document.querySelector('.search-input') as HTMLInputElement
+            if (searchInput) {
+                // Clear any accidental character and focus
+                if (searchInput.value === '/') {
+                    searchInput.value = ''
+                }
+                searchInput.focus()
+                searchInput.select()
+            } else {
+                // Navigate to search page and focus after navigation
+                router.push('/search').then(() => {
+                    // Use setTimeout to ensure DOM is updated after navigation
+                    setTimeout(() => {
+                        const input = document.querySelector('.search-input') as HTMLInputElement
+                        if (input) {
+                            // Clear any accidental '/' character
+                            if (input.value === '/') {
+                                input.value = ''
+                            }
+                            input.focus()
+                        }
+                    }, 100)
+                })
+            }
             return
         }
 
