@@ -10,6 +10,7 @@ DB_PORT="${DB_PORT:-15432}"
 MEILI_PORT="${MEILI_PORT:-17700}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-folio}"
 BIB_DIRECTORY="${BIB_DIRECTORY:-}"
+DOCS_DIRECTORY="${DOCS_DIRECTORY:-/home/b/documents}"  # Where PDFs are stored
 NETWORK_NAME="folio-net"
 
 # Get real Docker CLI (Guix wraps 'docker' as podman)
@@ -105,6 +106,12 @@ start_folio() {
     if [ -n "$BIB_DIRECTORY" ] && [ -d "$BIB_DIRECTORY" ]; then
         mounts="$mounts -v $BIB_DIRECTORY:/bibliography:ro"
         echo "  Bibliography: $BIB_DIRECTORY → /bibliography"
+    fi
+    
+    # Documents mount (for PDF files - mount at same path so absolute paths work)
+    if [ -n "$DOCS_DIRECTORY" ] && [ -d "$DOCS_DIRECTORY" ]; then
+        mounts="$mounts -v $DOCS_DIRECTORY:$DOCS_DIRECTORY:ro"
+        echo "  Documents: $DOCS_DIRECTORY"
     fi
     
     $DOCKER run -d \

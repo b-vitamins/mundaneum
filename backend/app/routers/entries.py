@@ -323,6 +323,7 @@ async def get_pdf(
         pdf_path,
         media_type="application/pdf",
         filename=pdf_path.name,
+        headers={"Content-Disposition": f'inline; filename="{pdf_path.name}"'},
     )
 
 
