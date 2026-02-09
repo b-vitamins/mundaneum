@@ -305,12 +305,13 @@ async def detailed_health():
     db_ok = await check_db_health()
     meili_ok = meili_available()
 
-    # Check BibTeX directory
+    # Check BibTeX directory (optional - not having one doesn't affect core functionality)
     bib_dir = Path(settings.bib_directory)
-    bib_ok = bib_dir.exists() and bib_dir.is_dir()
-    bib_count = len(list(bib_dir.glob("**/*.bib"))) if bib_ok else 0
+    bib_exists = bib_dir.exists() and bib_dir.is_dir()
+    bib_count = len(list(bib_dir.glob("**/*.bib"))) if bib_exists else 0
 
-    if db_ok and meili_ok and bib_ok:
+    # Status based on core services only (db and search)
+    if db_ok and meili_ok:
         status = "healthy"
     elif db_ok:
         status = "degraded"
@@ -321,6 +322,6 @@ async def detailed_health():
         status=status,
         database="ok" if db_ok else "unavailable",
         search="ok" if meili_ok else "unavailable",
-        bib_directory="ok" if bib_ok else "not found",
+        bib_directory="ok" if bib_exists else "not configured",
         bib_files_count=bib_count,
     )
