@@ -385,8 +385,20 @@ def parse_entry(
         except ValueError:
             logger.debug("Invalid year '%s' in %s", year_str, citation_key)
 
-    # File path (absolute path in BibTeX file field)
-    file_path = entry.get("file", "").strip() or None
+    # File path (parse BibTeX file field format ":path:type")
+    raw_file = entry.get("file", "").strip()
+    file_path = None
+    if raw_file:
+        # BibTeX file field format: ":path:type" or just "path"
+        if raw_file.startswith(":"):
+            # Format is ":path:type" - extract just the path
+            parts = raw_file.split(":")
+            # parts = ['', 'path', 'type'] for ":path:type"
+            if len(parts) >= 2:
+                file_path = parts[1].strip() or None
+        else:
+            # Plain path (no colons)
+            file_path = raw_file
 
     # Parse authors
     authors = parse_authors(entry.get("author", ""))
