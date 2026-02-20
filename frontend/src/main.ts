@@ -22,6 +22,11 @@ const router = createRouter({
             component: () => import('./views/EntryDetail.vue')
         },
         {
+            path: '/entry/:id/graph',
+            name: 'graph',
+            component: () => import('./views/GraphExplorer.vue')
+        },
+        {
             path: '/collections',
             name: 'collections',
             component: () => import('./views/Collections.vue')

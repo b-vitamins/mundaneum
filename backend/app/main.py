@@ -21,6 +21,7 @@ from app.routers import (
     authors,
     collections,
     entries,
+    graph,
     ingest,
     search,
     subjects,
@@ -119,6 +120,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(admin.router, prefix="/api")
 app.include_router(authors.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
+app.include_router(graph.router, prefix="/api")
 app.include_router(collections.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
 app.include_router(search.router, prefix="/api/search")

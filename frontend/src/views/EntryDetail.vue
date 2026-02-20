@@ -182,6 +182,12 @@ const allFields = computed(() => {
             <button class="action-btn" @click="toggleRead" :disabled="actionLoading">
               {{ entry.read ? '✓ Read' : 'Mark as Read' }}
             </button>
+            <router-link
+              :to="{ name: 'graph', params: { id: entry.id } }"
+              class="action-btn graph-btn"
+            >
+              ◉ Citation Graph
+            </router-link>
             <div class="collection-dropdown">
               <button 
                 class="action-btn" 
@@ -373,6 +379,15 @@ const allFields = computed(() => {
 .action-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.graph-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .collection-dropdown {

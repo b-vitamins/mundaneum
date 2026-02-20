@@ -132,6 +132,31 @@ export interface S2Paper {
     intents: string[]
 }
 
+// Graph types
+export interface GraphNode {
+    id: string
+    title: string
+    year: number | null
+    venue: string | null
+    authors: string[]
+    citation_count: number
+    fields_of_study: string[]
+    in_library: boolean
+    entry_id: string | null
+}
+
+export interface GraphEdge {
+    source: string
+    target: string
+    is_influential: boolean
+}
+
+export interface GraphData {
+    center_id: string
+    nodes: GraphNode[]
+    edges: GraphEdge[]
+}
+
 // Admin API types
 export interface AdminHealth {
     status: string
@@ -402,6 +427,20 @@ export const api = {
     async getReferences(id: string): Promise<S2Paper[]> {
         try {
             const { data } = await withRetry(() => client.get(`/entries/${id}/references`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    // Graph API
+    async getGraph(entryId: string, depth = 1, maxNodes = 80): Promise<GraphData> {
+        try {
+            const { data } = await withRetry(() =>
+                client.get(`/graph/${entryId}`, {
+                    params: { depth, max_nodes: maxNodes }
+                })
+            )
             return data
         } catch (error) {
             return handleError(error)
