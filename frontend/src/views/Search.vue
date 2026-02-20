@@ -2,6 +2,7 @@
 import { ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type SearchHit, type SearchFilters } from '@/api/client'
+import AppShell from '@/components/AppShell.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,262 +13,200 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 
-// Filters
 const showFilters = ref(false)
 const filters = ref<SearchFilters>({})
 const entryTypes = ['article', 'book', 'inproceedings', 'phdthesis', 'techreport', 'misc']
 
-// Debounce timer
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-const search = async () => {
-  // Allow empty query if filter is active (e.g. recent)
-  // If no query and no filters, don't search (unless we want 'all' by default?)
-  // For 'Recent', we expect filter=recent or similar logic.
-  
-  loading.value = true
-  error.value = ''
-  
-  try {
-    const isRecent = route.query.filter === 'recent'
-    let sortParam: string | undefined = undefined
-    
-    // If Recent mode, sort by created_at desc
-    // Note: meilisearch sort format is "attr:asc" or "attr:desc"
-    if (isRecent) {
-        sortParam = 'created_at:desc'
-    }
-
-    const response = await api.search(
-        query.value, 
-        filters.value, 
-        20, 
-        0, 
-        sortParam
-    )
-    results.value = response.hits
-    total.value = response.total
-  } catch (e) {
-    console.error('Search failed:', e)
-    error.value = 'Search failed. Please try again.'
+async function search() {
+  if (!query.value.trim()) {
     results.value = []
     total.value = 0
+    return
+  }
+  loading.value = true
+  error.value = ''
+  try {
+    const activeFilters: SearchFilters = {}
+    if (filters.value.entry_type) activeFilters.entry_type = filters.value.entry_type
+    if (filters.value.year_from) activeFilters.year_from = filters.value.year_from
+    if (filters.value.year_to) activeFilters.year_to = filters.value.year_to
+    if (filters.value.read_only) activeFilters.read_only = filters.value.read_only
+
+    const data = await api.search(query.value, activeFilters)
+    results.value = data.hits
+    total.value = data.total
+  } catch (e) {
+    console.error('Search failed:', e)
+    error.value = 'Search failed'
   } finally {
     loading.value = false
   }
 }
 
-// Debounced search
-const debouncedSearch = () => {
+function debouncedSearch() {
   if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(search, 300)
+  debounceTimer = setTimeout(() => {
+    router.replace({ query: { ...route.query, q: query.value } })
+    search()
+  }, 300)
 }
 
 watch(() => route.query, (newQuery) => {
   query.value = newQuery.q as string || ''
-  // Trigger search if q or filter changes
   search()
 }, { immediate: true })
 
-// Watch query for debounced search on typing
-watch(query, () => {
-    debouncedSearch()
-})
+watch(query, () => { debouncedSearch() })
 
-onUnmounted(() => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-})
+onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
 
-const handleSearch = () => {
-  router.push({ name: 'search', query: { q: query.value } })
-}
-
-const toggleFilters = () => {
-  showFilters.value = !showFilters.value
-}
-
-const applyFilters = () => {
+function handleSearch() {
+  router.replace({ query: { ...route.query, q: query.value } })
   search()
 }
 
-const clearFilters = () => {
+function clearFilters() {
   filters.value = {}
   search()
 }
 </script>
 
 <template>
-  <div class="search-page">
-    <header class="header">
-      <router-link to="/" class="brand">Folio</router-link>
-      <form class="search-form" @submit.prevent="handleSearch">
+  <AppShell title="Search">
+    <template #actions>
+      <button class="btn btn-ghost" @click="showFilters = !showFilters">
+        {{ showFilters ? 'Hide Filters' : 'Filters' }}
+      </button>
+    </template>
+
+    <!-- Search bar -->
+    <form class="search-bar" @submit.prevent="handleSearch">
+      <div class="search-wrapper">
+        <span class="search-icon">⌕</span>
         <input
           v-model="query"
           type="text"
-          class="search-input"
-          placeholder="Search..."
+          class="search-input input"
+          placeholder="Search papers, authors, topics..."
+          autofocus
         />
-      </form>
-      <button class="filter-toggle" @click="toggleFilters">
-        {{ showFilters ? 'Hide Filters' : 'Filters' }}
-      </button>
-    </header>
+      </div>
+    </form>
 
-    <main class="content">
-      <aside v-if="showFilters" class="filters">
+    <div class="search-layout">
+      <!-- Filters panel -->
+      <aside v-if="showFilters" class="filters card">
         <div class="filter-group">
           <label class="filter-label">Type</label>
-          <select v-model="filters.entry_type" class="filter-select">
+          <select v-model="filters.entry_type" class="filter-control input">
             <option value="">All types</option>
             <option v-for="t in entryTypes" :key="t" :value="t">{{ t }}</option>
           </select>
         </div>
 
         <div class="filter-group">
-          <label class="filter-label">Year</label>
+          <label class="filter-label">Year Range</label>
           <div class="year-range">
-            <input
-              v-model.number="filters.year_from"
-              type="number"
-              class="filter-input"
-              placeholder="From"
-            />
-            <span class="range-sep">–</span>
-            <input
-              v-model.number="filters.year_to"
-              type="number"
-              class="filter-input"
-              placeholder="To"
-            />
+            <input v-model.number="filters.year_from" type="number" class="filter-control input" placeholder="From" />
+            <span class="year-sep">–</span>
+            <input v-model.number="filters.year_to" type="number" class="filter-control input" placeholder="To" />
           </div>
         </div>
 
         <div class="filter-group">
-          <label class="filter-checkbox">
-            <input type="checkbox" v-model="filters.has_pdf" />
-            Has PDF
-          </label>
-        </div>
-
-        <div class="filter-group">
-          <label class="filter-checkbox">
-            <input type="checkbox" v-model="filters.read" />
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="filters.read_only" />
             Read only
           </label>
         </div>
 
         <div class="filter-actions">
-          <button class="btn-apply" @click="applyFilters">Apply</button>
-          <button class="btn-clear" @click="clearFilters">Clear</button>
+          <button class="btn btn-primary" @click="search">Apply</button>
+          <button class="btn btn-ghost" @click="clearFilters">Clear</button>
         </div>
       </aside>
 
+      <!-- Results -->
       <section class="results">
-        <div class="results-header">
-          <span v-if="total > 0" class="results-count">{{ total.toLocaleString() }} results</span>
+        <div class="results-header" v-if="total > 0">
+          <span class="results-count">{{ total.toLocaleString() }} results</span>
         </div>
 
-        <p v-if="loading" class="status">
+        <div v-if="loading" class="status">
           <span class="spinner"></span>
           Searching...
-        </p>
+        </div>
         <p v-else-if="error" class="status error">{{ error }}</p>
         <p v-else-if="results.length === 0 && query" class="status">No results found</p>
-        <p v-else-if="!query" class="status">Enter a search term</p>
+        <p v-else-if="!query" class="status empty-state">Enter a search term to find papers</p>
 
-        <article v-for="item in results" :key="item.id" class="result-card">
-          <router-link :to="`/entry/${item.id}`" class="result-title">
-            {{ item.title }}
+        <div class="results-list">
+          <router-link
+            v-for="item in results"
+            :key="item.id"
+            :to="`/entry/${item.id}`"
+            class="result-row card card-hoverable"
+          >
+            <div class="result-body">
+              <h3 class="result-title">{{ item.title }}</h3>
+              <p v-if="item.authors.length" class="result-authors">{{ item.authors.join(', ') }}</p>
+              <div class="result-meta">
+                <span v-if="item.venue">{{ item.venue }}</span>
+                <span v-if="item.year">{{ item.year }}</span>
+              </div>
+            </div>
+            <div class="result-badges">
+              <span v-if="item.file_path" class="badge badge-accent">PDF</span>
+              <span v-if="item.read" class="badge badge-success">✓ Read</span>
+            </div>
           </router-link>
-          <p class="result-authors">{{ item.authors.join(', ') }}</p>
-          <p class="result-meta">
-            <span class="meta-type">{{ item.entry_type }}</span>
-            <span v-if="item.year">· {{ item.year }}</span>
-            <span v-if="item.venue">· {{ item.venue }}</span>
-          </p>
-          <p v-if="item.abstract" class="result-abstract">
-            {{ item.abstract.slice(0, 200) }}{{ item.abstract.length > 200 ? '...' : '' }}
-          </p>
-          <div class="result-actions">
-            <router-link 
-              v-if="item.has_pdf" 
-              class="action-link" 
-              :to="`/entry/${item.id}`"
-              @click.stop
-            >
-              PDF
-            </router-link>
-            <span v-if="item.read" class="read-badge">✓ Read</span>
-          </div>
-        </article>
+        </div>
       </section>
-    </main>
-  </div>
+    </div>
+  </AppShell>
 </template>
 
 <style scoped>
-.search-page {
-  min-height: 100vh;
+.search-bar {
+  margin-bottom: var(--space-5);
 }
 
-.header {
+.search-wrapper {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
 }
 
-.brand {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.search-form {
-  flex: 1;
-  max-width: 600px;
+.search-icon {
+  position: absolute;
+  left: var(--space-4);
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .search-input {
-  width: 100%;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
+  padding-left: 2.5rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.search-input:focus {
+  box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-subtle);
 }
 
-.filter-toggle {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.filter-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.content {
+.search-layout {
   display: flex;
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: var(--space-6);
-  gap: var(--space-8);
+  gap: var(--space-6);
 }
 
 .filters {
-  width: 220px;
+  width: 240px;
   flex-shrink: 0;
-  padding: var(--space-4);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   height: fit-content;
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-6));
 }
 
 .filter-group {
@@ -278,65 +217,43 @@ const clearFilters = () => {
   display: block;
   font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-bottom: var(--space-2);
 }
 
-.filter-select,
-.filter-input {
-  width: 100%;
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
+.filter-control {
   font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
 }
 
 .year-range {
   display: flex;
-  align-items: center;
   gap: var(--space-2);
+  align-items: center;
 }
-
-.range-sep {
+.year-sep {
   color: var(--text-muted);
 }
 
-.filter-checkbox {
+.checkbox-label {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   font-size: var(--text-sm);
-  color: var(--text);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
 .filter-actions {
   display: flex;
   gap: var(--space-2);
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
-.btn-apply {
-  flex: 1;
-  padding: var(--space-2);
-  background: var(--accent);
-  color: white;
-  border-radius: var(--radius);
-  font-size: var(--text-sm);
-}
-
-.btn-clear {
-  padding: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .results {
   flex: 1;
+  min-width: 0;
 }
 
 .results-header {
@@ -344,94 +261,69 @@ const clearFilters = () => {
 }
 
 .results-count {
-  color: var(--text-muted);
   font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .status {
-  color: var(--text-muted);
   text-align: center;
-  padding: var(--space-8);
+  padding: var(--space-12);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
 }
+.status.error { color: var(--danger); }
 
-.status.error {
-  color: #ef4444;
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  text-decoration: none;
+  color: inherit;
 }
+.result-row:hover { text-decoration: none; }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.result-card {
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
-}
-
-.result-card:hover {
-  background: var(--bg-surface);
+.result-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .result-title {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--text);
-  display: block;
+  line-height: var(--leading-tight);
   margin-bottom: var(--space-1);
 }
 
 .result-authors {
-  color: var(--accent);
   font-size: var(--text-sm);
+  color: var(--accent);
   margin-bottom: var(--space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .result-meta {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-bottom: var(--space-2);
-}
-
-.meta-type {
-  text-transform: uppercase;
-  font-size: 0.7rem;
-  padding: 2px 6px;
-  background: var(--border);
-  border-radius: 4px;
-}
-
-.result-abstract {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin-bottom: var(--space-2);
-}
-
-.result-actions {
   display: flex;
-  gap: var(--space-3);
-  align-items: center;
-}
-
-.action-link {
-  font-size: var(--text-sm);
-  color: var(--accent);
-}
-
-.read-badge {
+  gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--text-muted);
+}
+
+.result-badges {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  margin-left: var(--space-4);
 }
 </style>

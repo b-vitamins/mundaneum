@@ -2,12 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type Stats } from '@/api/client'
+import { useDarkMode } from '@/composables/useDarkMode'
 
 const router = useRouter()
 const query = ref('')
 const stats = ref<Stats>({ entries: 0, authors: 0, collections: 0 })
 const loading = ref(true)
-const error = ref('')
+const { isDark, toggle: toggleDark } = useDarkMode()
 
 const handleSearch = () => {
   if (query.value.trim()) {
@@ -19,7 +20,6 @@ onMounted(async () => {
   try {
     stats.value = await api.getStats()
   } catch (e) {
-    error.value = 'Could not load library stats'
     console.error('Failed to fetch stats:', e)
   } finally {
     loading.value = false
@@ -30,35 +30,39 @@ onMounted(async () => {
 <template>
   <main class="home">
     <div class="hero">
+      <button class="theme-btn" @click="toggleDark" :title="isDark ? 'Light mode' : 'Dark mode'">
+        {{ isDark ? '☀️' : '🌙' }}
+      </button>
+
       <h1 class="logo">Folio</h1>
-      <p class="tagline">Your private library</p>
+      <p class="tagline">Your personal research library</p>
 
       <form class="search-form" @submit.prevent="handleSearch">
-        <input
-          v-model="query"
-          type="text"
-          class="search-input"
-          placeholder="Search your library..."
-          autofocus
-        />
-        <button type="submit" class="search-button">Search</button>
+        <div class="search-wrapper">
+          <span class="search-icon">⌕</span>
+          <input
+            v-model="query"
+            type="text"
+            class="search-input"
+            placeholder="Search papers, authors, topics..."
+            autofocus
+          />
+          <kbd class="search-kbd">/</kbd>
+        </div>
       </form>
 
-      <p v-if="loading" class="stats">Loading...</p>
-      <p v-else-if="error" class="stats error">{{ error }}</p>
-      <p v-else class="stats">{{ stats.entries.toLocaleString() }} entries</p>
+      <p v-if="!loading" class="stats">
+        {{ stats.entries.toLocaleString() }} papers in your library
+      </p>
 
       <nav class="quick-links">
-        <router-link to="/browse" class="quick-link">Browse</router-link>
-        <router-link to="/authors" class="quick-link">Authors</router-link>
-        <router-link to="/venues" class="quick-link">Venues</router-link>
-        <router-link to="/subjects" class="quick-link">Subjects</router-link>
-        <router-link to="/topics" class="quick-link">Topics</router-link>
-        <router-link to="/collections" class="quick-link">Collections</router-link>
-        <router-link to="/admin" class="quick-link admin-link">Admin</router-link>
+        <router-link to="/browse" class="pill">Browse</router-link>
+        <router-link to="/authors" class="pill">Authors</router-link>
+        <router-link to="/venues" class="pill">Venues</router-link>
+        <router-link to="/subjects" class="pill">Subjects</router-link>
+        <router-link to="/topics" class="pill">Topics</router-link>
+        <router-link to="/collections" class="pill">Collections</router-link>
       </nav>
-      
-      <p class="hint">Press <kbd>/</kbd> to search</p>
     </div>
   </main>
 </template>
@@ -73,53 +77,91 @@ onMounted(async () => {
 
 .hero {
   text-align: center;
-  max-width: 600px;
+  max-width: 640px;
   padding: var(--space-8);
+  position: relative;
+}
+
+.theme-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 1.1rem;
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  transition: transform var(--duration-fast) var(--ease-out);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.theme-btn:hover {
+  transform: scale(1.1);
 }
 
 .logo {
-  font-size: var(--text-3xl);
+  font-size: 2.5rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: var(--space-2);
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-1);
+  color: var(--text);
 }
 
 .tagline {
   color: var(--text-muted);
+  font-size: var(--text-base);
   margin-bottom: var(--space-8);
 }
 
+/* Spotlight-style search */
 .search-form {
-  display: flex;
-  gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
 
+.search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--space-4);
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
 .search-input {
-  flex: 1;
-  padding: var(--space-3) var(--space-4);
+  width: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-3) 2.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
   color: var(--text);
   font-size: var(--text-base);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-fast) var(--ease-out);
 }
-
 .search-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-subtle);
+}
+.search-input::placeholder {
+  color: var(--text-muted);
 }
 
-.search-button {
-  padding: var(--space-3) var(--space-6);
-  background: var(--accent);
-  color: white;
-  border-radius: var(--radius);
-  font-weight: 500;
-}
-
-.search-button:hover {
-  opacity: 0.9;
+.search-kbd {
+  position: absolute;
+  right: var(--space-3);
+  padding: 2px 7px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .stats {
@@ -128,43 +170,25 @@ onMounted(async () => {
   margin-bottom: var(--space-6);
 }
 
-.stats.error {
-  color: #ef4444;
-}
-
 .quick-links {
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-2);
   justify-content: center;
-  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
 }
 
-.quick-link {
-  color: var(--text-muted);
+.pill {
+  color: var(--text-secondary);
   font-size: var(--text-sm);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition: all 0.15s ease;
+  font-weight: 500;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--accent-subtle);
+  transition: all var(--duration-fast) var(--ease-out);
 }
-
-.quick-link:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
+.pill:hover {
+  background: var(--accent);
+  color: #fff;
   text-decoration: none;
-}
-
-.hint {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  opacity: 0.6;
-}
-
-kbd {
-  padding: 2px 6px;
-  background: var(--border);
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 0.85em;
 }
 </style>

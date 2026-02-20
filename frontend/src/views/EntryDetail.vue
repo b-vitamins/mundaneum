@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, type EntryDetail, type Collection, ApiError } from '@/api/client'
+import { api, type EntryDetail, type Collection, type S2Meta, ApiError } from '@/api/client'
 import CitationList from '@/components/CitationList.vue'
+import AppShell from '@/components/AppShell.vue'
+import { useProgressiveData } from '@/composables/useProgressiveData'
 
 const route = useRoute()
 const entry = ref<EntryDetail | null>(null)
@@ -19,7 +21,18 @@ const actionLoading = ref(false)
 const showPdfViewer = ref(false)
 const pdfUrl = ref('')
 
-const tabs = ['abstract', 'notes', 'metadata']
+// S2 metadata with progressive loading
+const entryId = computed(() => route.params.id as string)
+const s2 = useProgressiveData<S2Meta>(
+  () => api.getEntryS2(entryId.value),
+  { pollWhile: (d) => d.sync_status === 'syncing', interval: 5000, lazy: true }
+)
+
+const mergedAbstract = computed(() => {
+  if (entry.value?.abstract) return entry.value.abstract
+  if (s2.ready.value && s2.data.value?.abstract) return s2.data.value.abstract
+  return null
+})
 
 const fetchEntry = async () => {
   loading.value = true
@@ -27,565 +40,314 @@ const fetchEntry = async () => {
   try {
     entry.value = await api.getEntry(route.params.id as string)
     notes.value = entry.value.notes || ''
+    s2.fetch()
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.detail || 'Entry not found'
-    } else {
-      error.value = 'Failed to load entry'
-    }
+    error.value = e instanceof ApiError ? (e.detail || 'Entry not found') : 'Failed to load entry'
   } finally {
     loading.value = false
   }
 }
 
 const fetchCollections = async () => {
-  try {
-    collections.value = await api.getCollections()
-  } catch (e) {
-    console.error('Failed to fetch collections:', e)
-  }
+  try { collections.value = await api.getCollections() } catch (e) { console.error(e) }
 }
 
-// Close dropdown when clicking outside
 const handleClickOutside = (e: MouseEvent) => {
-  const target = e.target as HTMLElement
-  if (!target.closest('.collection-dropdown')) {
-    showCollectionMenu.value = false
-  }
+  if (!(e.target as HTMLElement).closest('.collection-dropdown')) showCollectionMenu.value = false
 }
-
 const openPdf = () => {
   if (!entry.value?.file_path) return
-  // Use backend API to serve PDF
   pdfUrl.value = `/api/entries/${entry.value.id}/pdf`
   showPdfViewer.value = true
 }
+const closePdf = () => { showPdfViewer.value = false; pdfUrl.value = '' }
+const handleKeydown = (e: KeyboardEvent) => { if (e.key === 'Escape' && showPdfViewer.value) closePdf() }
 
-const closePdf = () => {
-  showPdfViewer.value = false
-  pdfUrl.value = ''
-}
-
-// Handle escape key to close PDF viewer
-const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && showPdfViewer.value) {
-    closePdf()
-  }
-}
-
-onMounted(() => {
-  fetchEntry()
-  fetchCollections()
-  document.addEventListener('click', handleClickOutside)
-  document.addEventListener('keydown', handleKeydown)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-  document.removeEventListener('keydown', handleKeydown)
-})
+onMounted(() => { fetchEntry(); fetchCollections(); document.addEventListener('click', handleClickOutside); document.addEventListener('keydown', handleKeydown) })
+onUnmounted(() => { document.removeEventListener('click', handleClickOutside); document.removeEventListener('keydown', handleKeydown) })
 
 const toggleRead = async () => {
   if (!entry.value || actionLoading.value) return
   actionLoading.value = true
-  try {
-    const newRead = !entry.value.read
-    await api.toggleRead(entry.value.id, newRead)
-    entry.value.read = newRead
-  } catch (e) {
-    console.error('Failed to toggle read:', e)
-  } finally {
-    actionLoading.value = false
-  }
+  try { await api.toggleRead(entry.value.id, !entry.value.read); entry.value.read = !entry.value.read }
+  catch (e) { console.error(e) }
+  finally { actionLoading.value = false }
 }
-
 const saveNotes = async () => {
   if (!entry.value) return
-  try {
-    await api.updateNotes(entry.value.id, notes.value)
-    notesSaved.value = true
-    setTimeout(() => { notesSaved.value = false }, 2000)
-  } catch (e) {
-    console.error('Failed to save notes:', e)
-  }
+  try { await api.updateNotes(entry.value.id, notes.value); notesSaved.value = true; setTimeout(() => notesSaved.value = false, 2000) }
+  catch (e) { console.error(e) }
 }
-
 const copyBibtex = async () => {
   if (!entry.value) return
-  try {
-    if (!bibtex.value) {
-      bibtex.value = await api.getBibtex(entry.value.id)
-    }
-    await navigator.clipboard.writeText(bibtex.value)
-    showBibtex.value = true
-    setTimeout(() => { showBibtex.value = false }, 2000)
-  } catch (e) {
-    console.error('Failed to copy BibTeX:', e)
-  }
+  try { if (!bibtex.value) bibtex.value = await api.getBibtex(entry.value.id); await navigator.clipboard.writeText(bibtex.value); showBibtex.value = true; setTimeout(() => showBibtex.value = false, 2000) }
+  catch (e) { console.error(e) }
 }
-
 const addToCollection = async (collectionId: string) => {
   if (!entry.value) return
-  try {
-    await api.addToCollection(collectionId, entry.value.id)
-    showCollectionMenu.value = false
-  } catch (e) {
-    console.error('Failed to add to collection:', e)
-  }
+  try { await api.addToCollection(collectionId, entry.value.id); showCollectionMenu.value = false }
+  catch (e) { console.error(e) }
 }
-
 const allFields = computed(() => {
   if (!entry.value) return []
   const fields: { key: string; value: unknown }[] = []
-  
-  for (const [k, v] of Object.entries(entry.value.required_fields || {})) {
-    fields.push({ key: k, value: v })
-  }
-  for (const [k, v] of Object.entries(entry.value.optional_fields || {})) {
-    fields.push({ key: k, value: v })
-  }
-  
+  for (const [k, v] of Object.entries(entry.value.required_fields || {})) fields.push({ key: k, value: v })
+  for (const [k, v] of Object.entries(entry.value.optional_fields || {})) fields.push({ key: k, value: v })
   return fields
 })
 </script>
 
 <template>
-  <div class="entry-page">
-    <header class="header">
-      <router-link to="/" class="brand">Folio</router-link>
-      <router-link to="/search" class="back">← Back to search</router-link>
-    </header>
+  <AppShell back-to="/browse" back-label="Library">
+    <div v-if="loading" class="status"><span class="spinner"></span> Loading...</div>
+    <div v-else-if="error" class="status error">{{ error }}</div>
 
-    <main class="content">
-      <p v-if="loading" class="status">Loading...</p>
-      <p v-else-if="error" class="status error">{{ error }}</p>
+    <template v-else-if="entry">
+      <article class="entry-article">
+        <!-- Header -->
+        <div class="entry-header">
+          <span class="badge badge-muted entry-type">{{ entry.entry_type }}</span>
+          <h1 class="entry-title">{{ entry.title }}</h1>
+          <p class="entry-authors">{{ entry.authors.join(', ') }}</p>
+          <p class="entry-venue">
+            <span v-if="entry.venue">{{ entry.venue }}</span>
+            <span v-if="entry.year">· {{ entry.year }}</span>
+          </p>
+        </div>
 
-      <template v-else-if="entry">
-        <article class="entry">
-          <div class="entry-header">
-            <span class="entry-type">{{ entry.entry_type }}</span>
-            <h1 class="title">{{ entry.title }}</h1>
-            <p class="authors">{{ entry.authors.join(', ') }}</p>
-            <p class="venue">
-              <span v-if="entry.venue">{{ entry.venue }}</span>
-              <span v-if="entry.year">· {{ entry.year }}</span>
-            </p>
+        <!-- Actions -->
+        <div class="actions">
+          <button v-if="entry.file_path" class="btn btn-ghost" @click="openPdf">Open PDF</button>
+          <button class="btn btn-ghost" @click="copyBibtex" :disabled="actionLoading">
+            {{ showBibtex ? '✓ Copied!' : 'Copy BibTeX' }}
+          </button>
+          <button class="btn btn-ghost" @click="toggleRead" :disabled="actionLoading">
+            {{ entry.read ? '✓ Read' : 'Mark as Read' }}
+          </button>
+          <router-link :to="{ name: 'graph', params: { id: entry.id } }" class="btn btn-primary">
+            ◉ Citation Graph
+          </router-link>
+          <div class="collection-dropdown">
+            <button class="btn btn-ghost" @click.stop="showCollectionMenu = !showCollectionMenu">
+              Add to Collection
+            </button>
+            <ul v-if="showCollectionMenu" class="collection-menu card">
+              <li v-if="collections.length === 0" class="menu-empty">No collections</li>
+              <li v-for="c in collections" :key="c.id" class="menu-item" @click="addToCollection(c.id)">{{ c.name }}</li>
+            </ul>
           </div>
+        </div>
 
-          <div class="actions">
-            <button v-if="entry.file_path" class="action-btn" @click="openPdf">
-              Open PDF
-            </button>
-            <button class="action-btn" @click="copyBibtex" :disabled="actionLoading">
-              {{ showBibtex ? 'Copied!' : 'Copy BibTeX' }}
-            </button>
-            <button class="action-btn" @click="toggleRead" :disabled="actionLoading">
-              {{ entry.read ? '✓ Read' : 'Mark as Read' }}
-            </button>
-            <router-link
-              :to="{ name: 'graph', params: { id: entry.id } }"
-              class="action-btn graph-btn"
-            >
-              ◉ Citation Graph
-            </router-link>
-            <div class="collection-dropdown">
-              <button 
-                class="action-btn" 
-                @click.stop="showCollectionMenu = !showCollectionMenu"
-              >
-                Add to Collection
-              </button>
-              <ul v-if="showCollectionMenu" class="collection-menu">
-                <li v-if="collections.length === 0" class="menu-empty">
-                  No collections
-                </li>
-                <li
-                  v-for="c in collections"
-                  :key="c.id"
-                  class="menu-item"
-                  @click="addToCollection(c.id)"
-                >
-                  {{ c.name }}
-                </li>
-              </ul>
+        <!-- S2 Panel -->
+        <div class="s2-panel card" :class="{ 'progressive-blur': s2.syncing.value || s2.loading.value, 'progressive-ready': s2.ready.value }">
+          <template v-if="s2.loading.value">
+            <div class="s2-skeleton">
+              <div class="progressive-skeleton" style="width: 80%; height: 1.2em; margin-bottom: 8px"></div>
+              <div class="progressive-skeleton" style="width: 60%; height: 0.9em; margin-bottom: 8px"></div>
+              <div class="progressive-skeleton" style="width: 40%; height: 0.9em"></div>
             </div>
-          </div>
+          </template>
+          <template v-else-if="s2.syncing.value">
+            <div class="s2-syncing"><span class="spinner"></span> Fetching metadata from Semantic Scholar…</div>
+          </template>
+          <template v-else-if="s2.ready.value && s2.data.value?.sync_status === 'synced'">
+            <p v-if="s2.data.value.tldr" class="s2-tldr"><strong>TLDR:</strong> {{ s2.data.value.tldr }}</p>
+            <div class="s2-stats">
+              <span v-if="s2.data.value.citation_count != null" class="s2-stat">
+                <strong>{{ s2.data.value.citation_count.toLocaleString() }}</strong> citations
+              </span>
+              <span v-if="s2.data.value.reference_count != null" class="s2-stat">
+                <strong>{{ s2.data.value.reference_count.toLocaleString() }}</strong> references
+              </span>
+              <span v-if="s2.data.value.influential_citation_count" class="s2-stat influential">
+                <strong>{{ s2.data.value.influential_citation_count.toLocaleString() }}</strong> influential
+              </span>
+            </div>
+            <div class="s2-tags" v-if="s2.data.value.fields_of_study.length">
+              <span v-for="field in s2.data.value.fields_of_study" :key="field" class="badge badge-muted">{{ field }}</span>
+              <span v-if="s2.data.value.is_open_access" class="badge badge-success">🔓 Open Access</span>
+            </div>
+            <div class="s2-links">
+              <a v-if="s2.data.value.s2_url" :href="s2.data.value.s2_url" target="_blank">Semantic Scholar ↗</a>
+              <a v-if="s2.data.value.open_access_pdf_url" :href="s2.data.value.open_access_pdf_url" target="_blank" class="oa-link">Open Access PDF ↗</a>
+              <a v-if="s2.data.value.external_ids?.DOI" :href="'https://doi.org/' + s2.data.value.external_ids.DOI" target="_blank">DOI ↗</a>
+            </div>
+          </template>
+          <template v-else-if="s2.data.value?.sync_status === 'no_match'">
+            <p class="s2-no-match">Not found on Semantic Scholar</p>
+          </template>
+        </div>
 
-          <nav class="tabs">
+        <!-- Tabs -->
+        <nav class="tabs-nav">
+          <div class="segmented">
             <button
               v-for="tab in ['abstract', 'notes', 'citations', 'references', 'metadata']"
               :key="tab"
-              :class="['tab', { active: activeTab === tab }]"
+              :class="['segmented-item', { active: activeTab === tab }]"
               @click="activeTab = tab"
-            >
-              {{ tab }}
-            </button>
-          </nav>
+            >{{ tab }}</button>
+          </div>
+        </nav>
 
-          <section v-if="activeTab === 'abstract'" class="tab-content">
-            <p v-if="entry.abstract" class="abstract">{{ entry.abstract }}</p>
-            <p v-else class="empty">No abstract available</p>
-          </section>
+        <section v-if="activeTab === 'abstract'" class="tab-content">
+          <p v-if="mergedAbstract" class="abstract">{{ mergedAbstract }}</p>
+          <p v-else-if="s2.syncing.value" class="empty progressive-blur">Loading abstract…</p>
+          <p v-else class="empty">No abstract available</p>
+        </section>
 
-          <section v-if="activeTab === 'notes'" class="tab-content">
-            <textarea
-              v-model="notes"
-              class="notes-input"
-              placeholder="Add your notes..."
-              @blur="saveNotes"
-            ></textarea>
-            <p v-if="notesSaved" class="notes-saved">Notes saved</p>
-          </section>
+        <section v-if="activeTab === 'notes'" class="tab-content">
+          <textarea v-model="notes" class="notes-input input" placeholder="Add your notes..." @blur="saveNotes"></textarea>
+          <p v-if="notesSaved" class="notes-saved">✓ Notes saved</p>
+        </section>
 
-          <section v-if="activeTab === 'citations'" class="tab-content">
-             <CitationList :entry-id="entry.id" type="citations" />
-          </section>
+        <section v-if="activeTab === 'citations'" class="tab-content">
+          <CitationList :entry-id="entry.id" type="citations" />
+        </section>
 
-          <section v-if="activeTab === 'references'" class="tab-content">
-             <CitationList :entry-id="entry.id" type="references" />
-          </section>
+        <section v-if="activeTab === 'references'" class="tab-content">
+          <CitationList :entry-id="entry.id" type="references" />
+        </section>
 
-          <section v-if="activeTab === 'metadata'" class="tab-content">
-            <dl class="metadata-list">
-              <div class="meta-row">
-                <dt>Citation Key</dt>
-                <dd><code>{{ entry.citation_key }}</code></dd>
-              </div>
-              <div class="meta-row">
-                <dt>Source File</dt>
-                <dd><code>{{ entry.source_file }}</code></dd>
-              </div>
-              <div v-for="field in allFields" :key="field.key" class="meta-row">
-                <dt>{{ field.key }}</dt>
-                <dd>{{ field.value }}</dd>
-              </div>
-            </dl>
-          </section>
-        </article>
-      </template>
-    </main>
+        <section v-if="activeTab === 'metadata'" class="tab-content">
+          <dl class="metadata-list">
+            <div class="meta-row">
+              <dt>Citation Key</dt>
+              <dd><code>{{ entry.citation_key }}</code></dd>
+            </div>
+            <div class="meta-row">
+              <dt>Source File</dt>
+              <dd><code>{{ entry.source_file }}</code></dd>
+            </div>
+            <div v-for="field in allFields" :key="field.key" class="meta-row">
+              <dt>{{ field.key }}</dt>
+              <dd>{{ field.value }}</dd>
+            </div>
+          </dl>
+        </section>
+      </article>
+    </template>
 
-    <!-- PDF Viewer Modal -->
+    <!-- PDF Modal -->
     <teleport to="body">
-      <div v-if="showPdfViewer" class="pdf-modal-overlay" @click.self="closePdf">
+      <div v-if="showPdfViewer" class="pdf-overlay" @click.self="closePdf">
         <div class="pdf-modal">
-          <header class="pdf-modal-header">
+          <header class="pdf-header">
             <span class="pdf-title">{{ entry?.title }}</span>
-            <button class="pdf-close" @click="closePdf">✕ Close</button>
+            <button class="btn btn-ghost" @click="closePdf">✕ Close</button>
           </header>
-          <iframe 
-            :src="pdfUrl" 
-            class="pdf-frame"
-            title="PDF Viewer"
-          ></iframe>
+          <iframe :src="pdfUrl" class="pdf-frame" title="PDF Viewer"></iframe>
         </div>
       </div>
     </teleport>
-  </div>
+  </AppShell>
 </template>
 
 <style scoped>
-.entry-page {
-  min-height: 100vh;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
-}
-
-.brand {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.back {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.content {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: var(--space-8);
-}
-
 .status {
-  color: var(--text-muted);
-  text-align: center;
+  text-align: center; padding: var(--space-12); color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
 }
+.status.error { color: var(--danger); }
 
-.status.error {
-  color: #ef4444;
-}
+.entry-article { max-width: 800px; }
 
-.entry-header {
-  margin-bottom: var(--space-6);
+.entry-header { margin-bottom: var(--space-5); }
+.entry-type { margin-bottom: var(--space-2); text-transform: uppercase; display: inline-block; }
+.entry-title {
+  font-size: var(--text-2xl); font-weight: 600; line-height: var(--leading-tight);
+  margin-bottom: var(--space-2); letter-spacing: -0.01em;
 }
-
-.entry-type {
-  display: inline-block;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  background: var(--border);
-  border-radius: 4px;
-  margin-bottom: var(--space-2);
-}
-
-.title {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  line-height: 1.3;
-  margin-bottom: var(--space-2);
-}
-
-.authors {
-  color: var(--accent);
-  margin-bottom: var(--space-1);
-}
-
-.venue {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
+.entry-authors { color: var(--accent); margin-bottom: var(--space-1); }
+.entry-venue { color: var(--text-muted); font-size: var(--text-sm); }
 
 .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-6);
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin-bottom: var(--space-5);
 }
 
-.action-btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  background: var(--bg-surface);
-  font-size: var(--text-sm);
-}
-
-.action-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.action-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.graph-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  text-decoration: none;
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.collection-dropdown {
-  position: relative;
-}
-
+.collection-dropdown { position: relative; }
 .collection-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: var(--space-1);
-  min-width: 180px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  list-style: none;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  position: absolute; top: 100%; left: 0; margin-top: var(--space-1);
+  min-width: 180px; list-style: none; z-index: 10;
+  box-shadow: var(--shadow-lg); padding: var(--space-1);
 }
-
 .menu-item {
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
+  padding: var(--space-2) var(--space-3); cursor: pointer;
+  border-radius: var(--radius-sm); font-size: var(--text-sm);
+  transition: background var(--duration-fast) var(--ease-out);
 }
+.menu-item:hover { background: var(--accent-subtle); }
+.menu-empty { padding: var(--space-2) var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
 
-.menu-item:hover {
-  background: var(--bg);
+/* S2 Panel */
+.s2-panel {
+  margin-bottom: var(--space-5); min-height: 48px;
+  transition: filter var(--duration-slow) var(--ease-out), opacity var(--duration-slow) var(--ease-out);
 }
+.s2-syncing {
+  display: flex; align-items: center; gap: var(--space-2);
+  color: var(--text-muted); font-size: var(--text-sm);
+}
+.s2-tldr {
+  font-size: var(--text-sm); color: var(--text); line-height: var(--leading-relaxed);
+  margin-bottom: var(--space-3); font-style: italic;
+}
+.s2-stats { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.s2-stat { font-size: var(--text-sm); color: var(--text-muted); }
+.s2-stat strong { color: var(--text); font-weight: 600; }
+.s2-stat.influential strong { color: var(--warning); }
+.s2-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); }
+.s2-links { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-sm); }
+.oa-link { color: var(--success); }
+.s2-no-match { font-size: var(--text-sm); color: var(--text-muted); font-style: italic; }
 
-.menu-empty {
-  padding: var(--space-2) var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-4);
-}
-
-.tab {
-  padding: var(--space-2) var(--space-4);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  text-transform: capitalize;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.tab:hover {
-  color: var(--text);
-}
-
-.tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-.tab-content {
-  min-height: 200px;
-}
-
-.abstract {
-  line-height: 1.8;
-}
-
-.empty {
-  color: var(--text-muted);
-}
+/* Tabs */
+.tabs-nav { margin-bottom: var(--space-5); }
+.tab-content { min-height: 200px; }
+.abstract { line-height: var(--leading-relaxed); }
+.empty { color: var(--text-muted); }
 
 .notes-input {
-  width: 100%;
-  min-height: 200px;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-surface);
-  color: var(--text);
-  font-family: inherit;
-  font-size: var(--text-base);
-  line-height: 1.6;
-  resize: vertical;
+  min-height: 200px; resize: vertical;
+  line-height: var(--leading-relaxed);
 }
+.notes-saved { color: var(--success); font-size: var(--text-sm); margin-top: var(--space-2); }
 
-.notes-saved {
-  color: var(--accent);
-  font-size: var(--text-sm);
-  margin-top: var(--space-2);
-}
-
-.metadata-list {
-  display: grid;
-  gap: var(--space-3);
-}
-
+.metadata-list { display: grid; gap: var(--space-1); }
 .meta-row {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: var(--space-4);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
+  display: grid; grid-template-columns: 140px 1fr; gap: var(--space-4);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border-subtle);
 }
-
-.meta-row dt {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  text-transform: capitalize;
-}
-
-.meta-row dd {
-  font-size: var(--text-sm);
-  word-break: break-word;
-}
-
+.meta-row dt { font-size: var(--text-sm); color: var(--text-muted); text-transform: capitalize; }
+.meta-row dd { font-size: var(--text-sm); word-break: break-word; }
 code {
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 0.9em;
-  padding: 2px 4px;
-  background: var(--border);
-  border-radius: 3px;
+  font-family: 'SF Mono', 'Monaco', monospace; font-size: 0.85em;
+  padding: 2px 6px; background: var(--bg); border-radius: var(--radius-sm);
 }
 
-/* PDF Viewer Modal */
-.pdf-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
+/* PDF Modal */
+.pdf-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; animation: fadeIn var(--duration-normal) var(--ease-out);
 }
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 .pdf-modal {
-  width: 95vw;
-  height: 95vh;
-  max-width: 1400px;
-  background: var(--bg-surface);
-  border-radius: var(--radius);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  width: 95vw; height: 95vh; max-width: 1400px;
+  background: var(--bg-surface); border-radius: var(--radius-lg);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: var(--shadow-lg);
 }
-
-.pdf-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
+.pdf-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle);
   background: var(--bg);
 }
-
 .pdf-title {
-  font-weight: 500;
-  font-size: var(--text-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  margin-right: var(--space-4);
+  font-weight: 500; font-size: var(--text-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; margin-right: var(--space-4);
 }
-
-.pdf-close {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.pdf-close:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-
-.pdf-frame {
-  flex: 1;
-  border: none;
-  width: 100%;
-  height: 100%;
-  background: #333;
-}
+.pdf-frame { flex: 1; border: none; width: 100%; height: 100%; background: #333; }
 </style>
