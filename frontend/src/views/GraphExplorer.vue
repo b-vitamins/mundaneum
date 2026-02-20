@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type GraphNode, type GraphData, ApiError } from '@/api/client'
+import { api, type GraphNode, type GraphData, type AggregateEntry, ApiError } from '@/api/client'
 import { useForceGraph } from '@/composables/useForceGraph'
 
 const route = useRoute()
@@ -19,6 +19,30 @@ const depth = ref(1)
 const maxNodes = ref(80)
 const showPanel = ref(true)
 const graphData = ref<GraphData | null>(null)
+const activeTab = ref<'graph' | 'prior' | 'derivative'>('graph')
+
+// Filter state
+const filterKeyword = ref('')
+const yearMin = ref(1990)
+const yearMax = ref(2026)
+const filterYearMin = ref(1990)
+const filterYearMax = ref(2026)
+
+// Computed: year histogram + bounds
+const yearHistogram = computed(() => {
+  if (!graphData.value) return []
+  const counts: Record<number, number> = {}
+  for (const n of graphData.value.nodes) {
+    if (n.year) counts[n.year] = (counts[n.year] || 0) + 1
+  }
+  const result: { year: number; count: number }[] = []
+  for (let y = yearMin.value; y <= yearMax.value; y++) {
+    result.push({ year: y, count: counts[y] || 0 })
+  }
+  return result
+})
+
+const maxHistCount = computed(() => Math.max(1, ...yearHistogram.value.map(h => h.count)))
 
 // Fetch graph data
 const fetchGraph = async () => {
@@ -30,6 +54,14 @@ const fetchGraph = async () => {
     if (data.nodes.length === 0) {
       error.value = 'No citation data available yet. Visit the entry page first to trigger S2 sync.'
       return
+    }
+    // Set year bounds
+    const years = data.nodes.map(n => n.year).filter(Boolean) as number[]
+    if (years.length > 0) {
+      yearMin.value = Math.min(...years)
+      yearMax.value = Math.max(...years)
+      filterYearMin.value = yearMin.value
+      filterYearMax.value = yearMax.value
     }
     graph.loadData(data)
   } catch (e) {
@@ -126,6 +158,49 @@ function formatAuthors(authors: string[]): string {
   if (authors.length <= 3) return authors.join(', ')
   return authors.slice(0, 3).join(', ') + ` +${authors.length - 3}`
 }
+// Format citation count
+function fmtCount(n: number): string {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+  return n.toString()
+}
+
+// Apply filters
+function applyFilter() {
+  const kw = filterKeyword.value.trim().toLowerCase()
+  const yMin = filterYearMin.value
+  const yMax = filterYearMax.value
+
+  // No filter active?
+  const noYearFilter = yMin <= yearMin.value && yMax >= yearMax.value
+  const noKeywordFilter = kw === ''
+
+  if (noYearFilter && noKeywordFilter) {
+    graph.setFilter(null)
+    return
+  }
+
+  graph.setFilter((node) => {
+    // Year filter
+    if (node.year && (node.year < yMin || node.year > yMax)) return false
+    // Keyword filter
+    if (kw) {
+      const text = [node.title, ...node.authors, node.venue || ''].join(' ').toLowerCase()
+      if (!text.includes(kw)) return false
+    }
+    return true
+  })
+}
+
+// Watch filter changes
+watch([filterYearMin, filterYearMax], applyFilter)
+watch(filterKeyword, () => {
+  // Debounce keyword
+  const val = filterKeyword.value
+  setTimeout(() => {
+    if (filterKeyword.value === val) applyFilter()
+  }, 200)
+})
 </script>
 
 <template>
@@ -155,6 +230,20 @@ function formatAuthors(authors: string[]): string {
         </div>
 
         <div class="control-group">
+          <label class="control-label">View</label>
+          <div class="toggle-group">
+            <button
+              :class="['toggle-btn', { active: graph.viewMode.value === 'citation' }]"
+              @click="graph.setViewMode('citation')"
+            >Citation</button>
+            <button
+              :class="['toggle-btn', { active: graph.viewMode.value === 'similarity' }]"
+              @click="graph.setViewMode('similarity')"
+            >Similarity</button>
+          </div>
+        </div>
+
+        <div class="control-group">
           <label class="control-label">Nodes: {{ maxNodes }}</label>
           <input
             type="range"
@@ -172,8 +261,78 @@ function formatAuthors(authors: string[]): string {
       </div>
     </header>
 
-    <!-- Legend -->
-    <div class="legend">
+    <!-- Tabs: Graph | Prior Works | Derivative Works -->
+    <nav class="view-tabs">
+      <button
+        :class="['view-tab', { active: activeTab === 'graph' }]"
+        @click="activeTab = 'graph'"
+      >◉ Graph</button>
+      <button
+        :class="['view-tab', { active: activeTab === 'prior' }]"
+        @click="activeTab = 'prior'"
+      >
+        Prior Works
+        <span v-if="graphData?.prior_works?.length" class="tab-count">{{ graphData.prior_works.length }}</span>
+      </button>
+      <button
+        :class="['view-tab', { active: activeTab === 'derivative' }]"
+        @click="activeTab = 'derivative'"
+      >
+        Derivative Works
+        <span v-if="graphData?.derivative_works?.length" class="tab-count">{{ graphData.derivative_works.length }}</span>
+      </button>
+    </nav>
+
+    <!-- Filter bar (graph tab only) -->
+    <div v-if="activeTab === 'graph' && graphData" class="filter-bar">
+      <div class="filter-group filter-year">
+        <label class="filter-label">Year: {{ filterYearMin }}–{{ filterYearMax }}</label>
+        <div class="year-slider-container">
+          <!-- Histogram sparkline -->
+          <div class="year-histogram">
+            <div
+              v-for="h in yearHistogram"
+              :key="h.year"
+              class="hist-bar"
+              :style="{
+                height: (h.count / maxHistCount) * 100 + '%',
+                opacity: h.year >= filterYearMin && h.year <= filterYearMax ? 1 : 0.2
+              }"
+              :title="`${h.year}: ${h.count} papers`"
+            ></div>
+          </div>
+          <!-- Dual range sliders (layered) -->
+          <div class="dual-range">
+            <input
+              type="range"
+              :min="yearMin"
+              :max="yearMax"
+              v-model.number="filterYearMin"
+              class="range-min"
+            />
+            <input
+              type="range"
+              :min="yearMin"
+              :max="yearMax"
+              v-model.number="filterYearMax"
+              class="range-max"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-group filter-keyword">
+        <input
+          type="text"
+          v-model="filterKeyword"
+          placeholder="Filter by keyword…"
+          class="keyword-input"
+        />
+      </div>
+    </div>
+
+    <!-- Legend (graph tab only) -->
+    <div v-if="activeTab === 'graph'" class="legend">
       <div class="legend-item">
         <span class="legend-swatch swatch-cool"></span>
         <span>Older</span>
@@ -193,8 +352,8 @@ function formatAuthors(authors: string[]): string {
       </div>
     </div>
 
-    <!-- Canvas -->
-    <div class="canvas-container">
+    <!-- Canvas (graph tab) -->
+    <div v-show="activeTab === 'graph'" class="canvas-container">
       <div v-if="loading" class="overlay-message">
         <div class="spinner"></div>
         <p>Loading citation graph…</p>
@@ -208,9 +367,91 @@ function formatAuthors(authors: string[]): string {
       <canvas ref="canvasRef" class="graph-canvas"></canvas>
     </div>
 
-    <!-- Hover tooltip -->
+    <!-- Prior Works table -->
+    <div v-if="activeTab === 'prior'" class="aggregate-container">
+      <div class="aggregate-header">
+        <h2 class="aggregate-title">Prior Works</h2>
+        <p class="aggregate-desc">Papers most frequently cited by the papers in this graph — the intellectual foundations of this research area.</p>
+      </div>
+      <div v-if="!graphData?.prior_works?.length" class="aggregate-empty">
+        No prior works found. This may happen if citation data is still syncing.
+      </div>
+      <table v-else class="aggregate-table">
+        <thead>
+          <tr>
+            <th class="th-title">Paper</th>
+            <th class="th-num">Year</th>
+            <th class="th-num">Citations</th>
+            <th class="th-num">Freq</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="paper in graphData.prior_works"
+            :key="paper.id"
+            class="agg-row"
+            :class="{ 'in-library': paper.in_library }"
+            @click="paper.entry_id ? goToEntry(paper.entry_id) : openOnS2(paper.id)"
+          >
+            <td class="td-title">
+              <div class="agg-paper-title">{{ paper.title }}</div>
+              <div class="agg-paper-authors">{{ formatAuthors(paper.authors) }}</div>
+              <div v-if="paper.venue" class="agg-paper-venue">{{ paper.venue }}</div>
+            </td>
+            <td class="td-num">{{ paper.year || '—' }}</td>
+            <td class="td-num">{{ fmtCount(paper.citation_count) }}</td>
+            <td class="td-num">
+              <span class="freq-badge">{{ paper.frequency }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Derivative Works table -->
+    <div v-if="activeTab === 'derivative'" class="aggregate-container">
+      <div class="aggregate-header">
+        <h2 class="aggregate-title">Derivative Works</h2>
+        <p class="aggregate-desc">Papers that cite many papers in this graph — recent surveys and state-of-the-art developments.</p>
+      </div>
+      <div v-if="!graphData?.derivative_works?.length" class="aggregate-empty">
+        No derivative works found. This may happen if citation data is still syncing.
+      </div>
+      <table v-else class="aggregate-table">
+        <thead>
+          <tr>
+            <th class="th-title">Paper</th>
+            <th class="th-num">Year</th>
+            <th class="th-num">Citations</th>
+            <th class="th-num">Freq</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="paper in graphData.derivative_works"
+            :key="paper.id"
+            class="agg-row"
+            :class="{ 'in-library': paper.in_library }"
+            @click="paper.entry_id ? goToEntry(paper.entry_id) : openOnS2(paper.id)"
+          >
+            <td class="td-title">
+              <div class="agg-paper-title">{{ paper.title }}</div>
+              <div class="agg-paper-authors">{{ formatAuthors(paper.authors) }}</div>
+              <div v-if="paper.venue" class="agg-paper-venue">{{ paper.venue }}</div>
+            </td>
+            <td class="td-num">{{ paper.year || '—' }}</td>
+            <td class="td-num">{{ fmtCount(paper.citation_count) }}</td>
+            <td class="td-num">
+              <span class="freq-badge">{{ paper.frequency }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Hover tooltip (graph tab only) -->
     <div
-      v-if="graph.hoveredNode.value && !graph.selectedNode.value"
+      v-if="activeTab === 'graph' && graph.hoveredNode.value && !graph.selectedNode.value"
       class="tooltip"
     >
       <div class="tooltip-title">{{ graph.hoveredNode.value.title }}</div>
@@ -277,8 +518,8 @@ function formatAuthors(authors: string[]): string {
       </div>
     </aside>
 
-    <!-- Keyboard hints -->
-    <div class="keyboard-hints">
+    <!-- Keyboard hints (graph tab only) -->
+    <div v-if="activeTab === 'graph'" class="keyboard-hints">
       <kbd>Esc</kbd> Deselect
       <kbd>R</kbd> Reset
       <kbd>+</kbd><kbd>−</kbd> Zoom
@@ -288,6 +529,181 @@ function formatAuthors(authors: string[]): string {
 </template>
 
 <style scoped>
+/* ── View Tabs ── */
+.view-tabs {
+  display: flex;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-4);
+}
+
+/* ── Filter Bar ── */
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filter-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.filter-year {
+  flex: 1;
+  max-width: 400px;
+}
+
+.year-slider-container {
+  position: relative;
+  height: 50px;
+}
+
+.year-histogram {
+  display: flex;
+  align-items: flex-end;
+  height: 28px;
+  gap: 1px;
+  padding-bottom: 2px;
+}
+
+.hist-bar {
+  flex: 1;
+  min-width: 2px;
+  background: var(--accent);
+  border-radius: 1px 1px 0 0;
+  transition: opacity 0.15s;
+  min-height: 1px;
+}
+
+.dual-range {
+  position: relative;
+  height: 20px;
+}
+
+.dual-range input[type="range"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 20px;
+  margin: 0;
+}
+
+.dual-range input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-surface);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.dual-range input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-surface);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.dual-range input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.dual-range input[type="range"]::-moz-range-track {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.filter-keyword {
+  min-width: 180px;
+}
+
+.keyword-input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.keyword-input:focus {
+  border-color: var(--accent);
+}
+
+.view-tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-tab:hover {
+  color: var(--text);
+}
+
+.view-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--border);
+  border-radius: 9px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.view-tab.active .tab-count {
+  background: var(--accent);
+  color: white;
+}
+
 /* ── Layout ── */
 .graph-page {
   position: fixed;
@@ -729,5 +1145,134 @@ function formatAuthors(authors: string[]): string {
   .keyboard-hints {
     display: none;
   }
+
+  .aggregate-table .th-num,
+  .aggregate-table .td-num {
+    display: none;
+  }
+
+  .aggregate-table .th-num:last-child,
+  .aggregate-table .td-num:last-child {
+    display: table-cell;
+  }
+}
+
+/* ── Aggregate Tables ── */
+.aggregate-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8);
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.aggregate-header {
+  margin-bottom: var(--space-6);
+}
+
+.aggregate-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.aggregate-desc {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.aggregate-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--space-8);
+}
+
+.aggregate-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.aggregate-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.aggregate-table th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--bg);
+  border-bottom: 2px solid var(--border);
+}
+
+.th-num {
+  text-align: right !important;
+  width: 80px;
+}
+
+.agg-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.agg-row:hover {
+  background: var(--bg-surface);
+}
+
+.agg-row.in-library {
+  border-left: 3px solid var(--accent);
+}
+
+.agg-row td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.td-num {
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.agg-paper-title {
+  font-weight: 500;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+.agg-paper-authors {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.agg-paper-venue {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+.freq-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: white;
+  border-radius: 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 </style>

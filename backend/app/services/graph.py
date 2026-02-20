@@ -10,8 +10,10 @@ the router or any consumer code.
 from __future__ import annotations
 
 import logging
-from collections import deque
+import math
+from collections import Counter, deque
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import Protocol, runtime_checkable
 
 from sqlalchemy import select
@@ -52,12 +54,39 @@ class GraphEdge:
 
 
 @dataclass(slots=True)
+class AggregateEntry:
+    """A paper surfaced by aggregate analysis (prior/derivative works)."""
+
+    id: str  # s2_id
+    title: str
+    year: int | None = None
+    venue: str | None = None
+    authors: list[str] = field(default_factory=list)
+    citation_count: int = 0
+    frequency: int = 0  # how many graph nodes cite/are cited by this
+    in_library: bool = False
+    entry_id: str | None = None
+
+
+@dataclass(slots=True)
 class GraphData:
     """Complete subgraph payload — the transport contract."""
 
     center_id: str
     nodes: list[GraphNode] = field(default_factory=list)
     edges: list[GraphEdge] = field(default_factory=list)
+    similarity_edges: list["SimilarityEdge"] = field(default_factory=list)
+    prior_works: list[AggregateEntry] = field(default_factory=list)
+    derivative_works: list[AggregateEntry] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SimilarityEdge:
+    """An undirected similarity edge between two papers."""
+
+    source: str  # s2_id
+    target: str  # s2_id
+    weight: float  # 0–1 similarity score
 
 
 # ──────────────────────────────────────────────────────────
@@ -270,16 +299,195 @@ class SQLAlchemyGraphProvider:
                         )
                     )
 
+        # ── Compute similarity edges ──
+        similarity_edges = self._compute_similarity(selected_ids, all_edges)
+
+        # ── Compute Prior & Derivative Works ──
+        prior_works = await self._compute_aggregate(selected_ids, direction="prior")
+        derivative_works = await self._compute_aggregate(
+            selected_ids, direction="derivative"
+        )
+
         logger.info(
-            "Graph for %s: %d nodes, %d edges (depth=%d, max=%d)",
+            "Graph for %s: %d nodes, %d edges, %d prior, %d derivative (depth=%d, max=%d)",
             center_s2_id,
             len(nodes),
             len(edges),
+            len(prior_works),
+            len(derivative_works),
             depth,
             max_nodes,
         )
 
-        return GraphData(center_id=center_s2_id, nodes=nodes, edges=edges)
+        return GraphData(
+            center_id=center_s2_id,
+            nodes=nodes,
+            edges=edges,
+            similarity_edges=similarity_edges,
+            prior_works=prior_works,
+            derivative_works=derivative_works,
+        )
+
+    def _compute_similarity(
+        self,
+        selected_ids: set[str],
+        all_edges: list[tuple[str, str, bool]],
+        min_weight: float = 0.05,
+    ) -> list[SimilarityEdge]:
+        """
+        Compute similarity edges via co-citation + bibliographic coupling.
+
+        Co-citation:  How many papers cite BOTH A and B?
+        Bib coupling: How many papers are cited by BOTH A and B?
+        Combined:     max(jaccard_cocitation, jaccard_coupling)
+
+        This is an alternative "lens" on the same graph data —
+        one of many possible views, not privileged above others.
+        """
+        # Build per-paper neighborhoods from ALL edges (not just selected)
+        citers_of: dict[str, set[str]] = {}  # paper -> set of papers that cite it
+        refs_of: dict[str, set[str]] = {}  # paper -> set of papers it cites
+
+        for src, tgt, _ in all_edges:
+            citers_of.setdefault(tgt, set()).add(src)
+            refs_of.setdefault(src, set()).add(tgt)
+
+        # Compute pairwise Jaccard for selected nodes
+        selected_list = list(selected_ids)
+        sim_edges: list[SimilarityEdge] = []
+
+        for a, b in combinations(selected_list, 2):
+            # Co-citation Jaccard
+            ca = citers_of.get(a, set())
+            cb = citers_of.get(b, set())
+            cc_union = len(ca | cb)
+            jc_cocite = len(ca & cb) / cc_union if cc_union > 0 else 0.0
+
+            # Bibliographic coupling Jaccard
+            ra = refs_of.get(a, set())
+            rb = refs_of.get(b, set())
+            bc_union = len(ra | rb)
+            jc_bibcoup = len(ra & rb) / bc_union if bc_union > 0 else 0.0
+
+            # Combined: max of both signals
+            weight = max(jc_cocite, jc_bibcoup)
+
+            if weight >= min_weight:
+                sim_edges.append(SimilarityEdge(source=a, target=b, weight=weight))
+
+        # Sort by weight descending, cap at reasonable number
+        sim_edges.sort(key=lambda e: e.weight, reverse=True)
+        return sim_edges[:500]
+
+    async def _compute_aggregate(
+        self,
+        graph_ids: set[str],
+        direction: str,
+        limit: int = 15,
+    ) -> list[AggregateEntry]:
+        """
+        Compute prior or derivative works for the subgraph.
+
+        Prior works: papers cited by many graph nodes (seminal foundations).
+        Derivative works: papers that cite many graph nodes (surveys/recent).
+        """
+        graph_id_list = list(graph_ids)
+        chunk_size = 500
+        counter: Counter[str] = Counter()
+
+        if direction == "prior":
+            # Find papers cited BY graph nodes (graph_node -> target)
+            # We want targets NOT in the graph
+            for i in range(0, len(graph_id_list), chunk_size):
+                chunk = graph_id_list[i : i + chunk_size]
+                result = await self.session.execute(
+                    select(S2Citation.target_id).where(S2Citation.source_id.in_(chunk))
+                )
+                for (target_id,) in result:
+                    if target_id not in graph_ids:
+                        counter[target_id] += 1
+        else:
+            # Find papers that CITE graph nodes (source -> graph_node)
+            # We want sources NOT in the graph
+            for i in range(0, len(graph_id_list), chunk_size):
+                chunk = graph_id_list[i : i + chunk_size]
+                result = await self.session.execute(
+                    select(S2Citation.source_id).where(S2Citation.target_id.in_(chunk))
+                )
+                for (source_id,) in result:
+                    if source_id not in graph_ids:
+                        counter[source_id] += 1
+
+        if not counter:
+            return []
+
+        # Get top candidates (by frequency first, then we'll re-rank)
+        # Take more than limit so we can rank by frequency * citation_count
+        top_ids = [pid for pid, _ in counter.most_common(limit * 3)]
+
+        # Fetch paper metadata
+        papers_by_id: dict[str, S2Paper] = {}
+        for i in range(0, len(top_ids), chunk_size):
+            chunk = top_ids[i : i + chunk_size]
+            result = await self.session.execute(
+                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
+            )
+            for paper in result.scalars():
+                papers_by_id[paper.s2_id] = paper
+
+        # In-library detection
+        library_map: dict[str, str] = {}
+        for i in range(0, len(top_ids), chunk_size):
+            chunk = top_ids[i : i + chunk_size]
+            result = await self.session.execute(
+                select(Entry.s2_id, Entry.id).where(
+                    Entry.s2_id.in_(chunk), Entry.s2_id.isnot(None)
+                )
+            )
+            for s2_id, entry_id in result:
+                library_map[s2_id] = str(entry_id)
+
+        # Build entries, rank by frequency * log(citation_count + 1)
+
+        entries: list[AggregateEntry] = []
+        for pid in top_ids:
+            paper = papers_by_id.get(pid)
+            if not paper:
+                continue
+
+            freq = counter[pid]
+            if freq < 2:
+                continue  # Must be cited/citing at least 2 graph nodes
+
+            authors = []
+            if paper.authors:
+                for a in paper.authors[:3]:
+                    if isinstance(a, dict):
+                        authors.append(a.get("name", "Unknown"))
+                    else:
+                        authors.append(str(a))
+
+            entries.append(
+                AggregateEntry(
+                    id=paper.s2_id,
+                    title=paper.title or "Untitled",
+                    year=paper.year,
+                    venue=paper.venue,
+                    authors=authors,
+                    citation_count=paper.citation_count or 0,
+                    frequency=freq,
+                    in_library=pid in library_map,
+                    entry_id=library_map.get(pid),
+                )
+            )
+
+        # Sort by frequency * log(citations+1), descending
+        entries.sort(
+            key=lambda e: e.frequency * math.log(e.citation_count + 1),
+            reverse=True,
+        )
+
+        return entries[:limit]
 
 
 # ──────────────────────────────────────────────────────────

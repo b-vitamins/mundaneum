@@ -40,6 +40,8 @@ export interface SimEdge {
     source: SimNode
     target: SimNode
     is_influential: boolean
+    // For similarity mode
+    weight?: number
 }
 
 export interface Camera {
@@ -84,6 +86,8 @@ export interface RenderState {
     hoveredId: string | null
     selectedId: string | null
     isDark: boolean
+    viewMode: 'citation' | 'similarity'
+    filteredIds: Set<string> | null  // null = no filter (show all)
 }
 
 // ──────────────────────────────────────────────────────────
@@ -335,6 +339,10 @@ class CanvasRenderer implements GraphRenderer {
         for (const edge of edges) {
             const { source: s, target: t } = edge
 
+            // Filter: dim edges where either endpoint is filtered out
+            const isFiltered = state.filteredIds !== null &&
+                (!state.filteredIds.has(s.id) || !state.filteredIds.has(t.id))
+
             // Curved bezier for visual clarity
             const midX = (s.x + t.x) / 2
             const midY = (s.y + t.y) / 2
@@ -348,7 +356,19 @@ class CanvasRenderer implements GraphRenderer {
             ctx.moveTo(s.x, s.y)
             ctx.quadraticCurveTo(cpX, cpY, t.x, t.y)
 
-            if (edge.is_influential) {
+            if (isFiltered) {
+                ctx.strokeStyle = state.isDark
+                    ? 'rgba(255, 255, 255, 0.02)'
+                    : 'rgba(0, 0, 0, 0.02)'
+                ctx.lineWidth = 0.5 / camera.zoom
+            } else if (state.viewMode === 'similarity' && edge.weight) {
+                // Similarity mode: weight-based thickness + warm color
+                const w = edge.weight
+                ctx.strokeStyle = state.isDark
+                    ? `rgba(255, 180, 80, ${0.15 + w * 0.5})`
+                    : `rgba(200, 120, 50, ${0.1 + w * 0.4})`
+                ctx.lineWidth = (1 + w * 4) / camera.zoom
+            } else if (edge.is_influential) {
                 ctx.strokeStyle = state.isDark
                     ? 'rgba(94, 158, 255, 0.5)'
                     : 'rgba(59, 130, 246, 0.45)'
@@ -377,6 +397,7 @@ class CanvasRenderer implements GraphRenderer {
             const isHovered = node.id === state.hoveredId
             const isSelected = node.id === state.selectedId
             const isInLibrary = node.data.in_library
+            const isFiltered = state.filteredIds !== null && !state.filteredIds.has(node.id)
 
             const r = node.radius
 
@@ -388,6 +409,9 @@ class CanvasRenderer implements GraphRenderer {
             ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
 
             // Fill
+            if (isFiltered) {
+                ctx.globalAlpha = 0.12
+            }
             ctx.fillStyle = color
             ctx.fill()
 
@@ -442,6 +466,11 @@ class CanvasRenderer implements GraphRenderer {
 
                 ctx.fillStyle = state.isDark ? '#F5F5F7' : '#1A1A1A'
                 ctx.fillText(label, node.x, labelY)
+            }
+
+            // Restore alpha if we dimmed
+            if (isFiltered) {
+                ctx.globalAlpha = 1.0
             }
         }
 
@@ -511,12 +540,16 @@ export function useForceGraph() {
     const hoveredNode = ref<GraphNode | null>(null)
     const selectedNode = ref<GraphNode | null>(null)
     const isSettled = ref(false)
+    const viewMode = ref<'citation' | 'similarity'>('citation')
 
     // Internals
     let canvas: HTMLCanvasElement | null = null
     let simNodes: SimNode[] = []
     let simEdges: SimEdge[] = []
     let centerId = ''
+    let rawData: GraphData | null = null
+    let nodeMap = new Map<string, SimNode>()
+    let filteredIds: Set<string> | null = null
     let layout: GraphLayout = new ForceLayout()
     let renderer: GraphRenderer = new CanvasRenderer()
     let animId = 0
@@ -552,9 +585,10 @@ export function useForceGraph() {
 
     function loadData(data: GraphData) {
         centerId = data.center_id
+        rawData = data
 
         // Build SimNodes
-        const nodeMap = new Map<string, SimNode>()
+        nodeMap = new Map<string, SimNode>()
         simNodes = data.nodes.map(n => {
             const r = 4 + 2 * Math.log2(Math.max(1, n.citation_count))
             const sn: SimNode = {
@@ -568,20 +602,6 @@ export function useForceGraph() {
             return sn
         })
 
-        // Build SimEdges (only for edges where both nodes exist)
-        simEdges = []
-        for (const e of data.edges) {
-            const src = nodeMap.get(e.source)
-            const tgt = nodeMap.get(e.target)
-            if (src && tgt) {
-                simEdges.push({
-                    source: src,
-                    target: tgt,
-                    is_influential: e.is_influential,
-                })
-            }
-        }
-
         // Position center node at origin
         const centerNode = nodeMap.get(centerId)
         if (centerNode) {
@@ -591,6 +611,8 @@ export function useForceGraph() {
 
         // Init layout
         isSettled.value = false
+        viewMode.value = 'citation'
+        buildEdges('citation')
         layout.init(simNodes, simEdges)
 
         // Reset camera
@@ -618,12 +640,75 @@ export function useForceGraph() {
                 hoveredId: hoveredNode.value?.id ?? null,
                 selectedId: selectedNode.value?.id ?? null,
                 isDark,
+                viewMode: viewMode.value,
+                filteredIds,
             })
 
             animId = requestAnimationFrame(frame)
         }
 
         animId = requestAnimationFrame(frame)
+    }
+
+    function buildEdges(mode: 'citation' | 'similarity') {
+        if (!rawData) return
+
+        simEdges = []
+        if (mode === 'citation') {
+            for (const e of rawData.edges) {
+                const src = nodeMap.get(e.source)
+                const tgt = nodeMap.get(e.target)
+                if (src && tgt) {
+                    simEdges.push({
+                        source: src,
+                        target: tgt,
+                        is_influential: e.is_influential,
+                    })
+                }
+            }
+        } else {
+            // Similarity edges
+            for (const se of rawData.similarity_edges) {
+                const src = nodeMap.get(se.source)
+                const tgt = nodeMap.get(se.target)
+                if (src && tgt) {
+                    simEdges.push({
+                        source: src,
+                        target: tgt,
+                        is_influential: false,
+                        weight: se.weight,
+                    })
+                }
+            }
+        }
+    }
+
+    function setViewMode(mode: 'citation' | 'similarity') {
+        if (mode === viewMode.value) return
+        viewMode.value = mode
+        buildEdges(mode)
+        // Restart simulation with new edges, keep node positions
+        isSettled.value = false
+        layout.init(simNodes, simEdges)
+        // Don't reset positions — keep current layout, just re-run forces
+        for (const node of simNodes) {
+            node.vx = 0
+            node.vy = 0
+        }
+    }
+
+    function setFilter(predicate: ((node: GraphNode) => boolean) | null) {
+        if (predicate === null) {
+            filteredIds = null
+        } else {
+            filteredIds = new Set(
+                simNodes.filter(sn => predicate(sn.data)).map(sn => sn.id)
+            )
+        }
+    }
+
+    function getSimNodes(): SimNode[] {
+        return simNodes
     }
 
     // ── Event handlers ──
@@ -733,6 +818,7 @@ export function useForceGraph() {
         hoveredNode: hoveredNode as Ref<GraphNode | null>,
         selectedNode: selectedNode as Ref<GraphNode | null>,
         isSettled,
+        viewMode,
 
         // Methods
         init,
@@ -743,5 +829,8 @@ export function useForceGraph() {
         zoomOut,
         onNodeClick,
         onNodeDblClick,
+        setViewMode,
+        setFilter,
+        getSimNodes,
     }
 }

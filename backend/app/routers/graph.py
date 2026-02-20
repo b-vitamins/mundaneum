@@ -56,6 +56,31 @@ class GraphResponse(BaseModel):
     center_id: str
     nodes: list[GraphNodeResponse] = []
     edges: list[GraphEdgeResponse] = []
+    prior_works: list["AggregateEntryResponse"] = []
+    derivative_works: list["AggregateEntryResponse"] = []
+    similarity_edges: list["SimilarityEdgeResponse"] = []
+
+
+class AggregateEntryResponse(BaseModel):
+    """A paper surfaced by aggregate analysis."""
+
+    id: str
+    title: str
+    year: Optional[int] = None
+    venue: Optional[str] = None
+    authors: list[str] = []
+    citation_count: int = 0
+    frequency: int = 0
+    in_library: bool = False
+    entry_id: Optional[str] = None
+
+
+class SimilarityEdgeResponse(BaseModel):
+    """An undirected similarity edge between two papers."""
+
+    source: str
+    target: str
+    weight: float
 
 
 # ──────────────────────────────────────────────────────────
@@ -124,4 +149,40 @@ async def get_graph(
         center_id=graph_data.center_id,
         nodes=nodes,
         edges=edges,
+        prior_works=[
+            AggregateEntryResponse(
+                id=p.id,
+                title=p.title,
+                year=p.year,
+                venue=p.venue,
+                authors=p.authors,
+                citation_count=p.citation_count,
+                frequency=p.frequency,
+                in_library=p.in_library,
+                entry_id=p.entry_id,
+            )
+            for p in graph_data.prior_works
+        ],
+        derivative_works=[
+            AggregateEntryResponse(
+                id=p.id,
+                title=p.title,
+                year=p.year,
+                venue=p.venue,
+                authors=p.authors,
+                citation_count=p.citation_count,
+                frequency=p.frequency,
+                in_library=p.in_library,
+                entry_id=p.entry_id,
+            )
+            for p in graph_data.derivative_works
+        ],
+        similarity_edges=[
+            SimilarityEdgeResponse(
+                source=se.source,
+                target=se.target,
+                weight=round(se.weight, 4),
+            )
+            for se in graph_data.similarity_edges
+        ],
     )

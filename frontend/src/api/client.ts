@@ -155,6 +155,27 @@ export interface GraphData {
     center_id: string
     nodes: GraphNode[]
     edges: GraphEdge[]
+    similarity_edges: SimilarityEdge[]
+    prior_works: AggregateEntry[]
+    derivative_works: AggregateEntry[]
+}
+
+export interface SimilarityEdge {
+    source: string
+    target: string
+    weight: number
+}
+
+export interface AggregateEntry {
+    id: string
+    title: string
+    year: number | null
+    venue: string | null
+    authors: string[]
+    citation_count: number
+    frequency: number
+    in_library: boolean
+    entry_id: string | null
 }
 
 // Admin API types
