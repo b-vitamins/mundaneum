@@ -17,7 +17,7 @@ pydantic-settings = "^2.1.0"
 meilisearch = "^0.31.0"
 bibtexparser = "^1.4.1"
 minio = "^7.2.3"
-semanticscholar = "^0.8.0"
+httpx = "^0.26.0"
 pylatexenc = "^2.10"
 
 [tool.poetry.group.dev.dependencies]

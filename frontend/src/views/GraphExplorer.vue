@@ -44,15 +44,28 @@ const yearHistogram = computed(() => {
 
 const maxHistCount = computed(() => Math.max(1, ...yearHistogram.value.map(h => h.count)))
 
-// Fetch graph data
+const syncing = ref(false)
+
+// Fetch graph data (with 202 polling for in-progress sync)
 const fetchGraph = async () => {
   loading.value = true
   error.value = ''
+  syncing.value = false
   try {
     const data = await api.getGraph(entryId, depth.value, maxNodes.value)
     graphData.value = data
+
+    // Handle 202 syncing status (backend returns {status: 'syncing'})
+    if ((data as any).status === 'syncing') {
+      syncing.value = true
+      loading.value = false
+      setTimeout(fetchGraph, 5000)
+      return
+    }
+
     if (data.nodes.length === 0) {
-      error.value = 'No citation data available yet. Visit the entry page first to trigger S2 sync.'
+      const msg = (data as any).message
+      error.value = msg || 'No citation data available for this entry.'
       return
     }
     // Set year bounds
@@ -65,12 +78,15 @@ const fetchGraph = async () => {
     }
     graph.loadData(data)
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) {
-      error.value = 'No Semantic Scholar data for this entry yet. Open the entry detail page to trigger a sync.'
-    } else {
-      error.value = 'Failed to load graph data.'
-      console.error(e)
+    if (e instanceof ApiError && e.status === 202) {
+      // Axios may throw for non-2xx; handle 202
+      syncing.value = true
+      loading.value = false
+      setTimeout(fetchGraph, 5000)
+      return
     }
+    error.value = e instanceof Error ? e.message : 'Failed to load graph data.'
+    console.error(e)
   } finally {
     loading.value = false
   }
@@ -357,6 +373,11 @@ watch(filterKeyword, () => {
       <div v-if="loading" class="overlay-message">
         <div class="spinner"></div>
         <p>Loading citation graph…</p>
+      </div>
+      <div v-else-if="syncing" class="overlay-message">
+        <div class="spinner"></div>
+        <p>Syncing citation data from Semantic Scholar…</p>
+        <p class="sync-hint">This may take a few seconds on first visit.</p>
       </div>
       <div v-else-if="error" class="overlay-message">
         <p class="error-text">{{ error }}</p>

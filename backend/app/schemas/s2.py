@@ -27,14 +27,14 @@ class S2Paper(BaseModel):
     abstract: Optional[str] = None
     tldr: Optional[S2TLDR] = None
     embedding: Optional[S2Embedding] = None
-    citationCount: int = 0
-    referenceCount: int = 0
-    influentialCitationCount: int = 0
-    isOpenAccess: bool = False
+    citationCount: Optional[int] = 0
+    referenceCount: Optional[int] = 0
+    influentialCitationCount: Optional[int] = 0
+    isOpenAccess: Optional[bool] = False
     openAccessPdf: Optional[Dict[str, Any]] = None
-    fieldsOfStudy: List[str] = []
-    publicationTypes: List[str] = []
-    externalIds: Dict[str, str] = {}
+    fieldsOfStudy: Optional[List[str]] = None
+    publicationTypes: Optional[List[str]] = None
+    externalIds: Optional[Dict[str, Any]] = None
 
     # For graph edges
     contexts: List[str] = []
@@ -53,6 +53,6 @@ class S2GraphEdge(BaseModel):
 
 
 class S2GraphResponse(BaseModel):
-    data: List[S2GraphEdge] = []
+    data: Optional[List[S2GraphEdge]] = None
     next: Optional[int] = None
     offset: Optional[int] = None

@@ -40,6 +40,8 @@ BIBLIOGRAPHY_PATH = "/bibliography"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle manager."""
+    import asyncio
+
     setup_logging()
     logger.info("Starting Folio v%s", VERSION)
 
@@ -66,10 +68,39 @@ async def lifespan(app: FastAPI):
             "No bibliography directory at %s, skipping auto-ingest", BIBLIOGRAPHY_PATH
         )
 
+    # Start S2 backfill loop (resolves unsynced entries in background)
+    async def _s2_backfill_loop():
+        from app.services.s2 import get_sync_orchestrator
+
+        # Wait for ingestion to settle before starting backfill
+        await asyncio.sleep(30)
+        orchestrator = get_sync_orchestrator()
+        logger.info("S2 backfill loop started")
+
+        while True:
+            try:
+                resolved = await orchestrator.backfill(batch_size=10)
+                if resolved == 0:
+                    await asyncio.sleep(300)  # Check every 5 min when idle
+                else:
+                    await asyncio.sleep(5)  # Brief pause between batches
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("S2 backfill error: %s", e)
+                await asyncio.sleep(60)
+
+    backfill_task = asyncio.create_task(_s2_backfill_loop())
+
     yield
 
     # Shutdown
     logger.info("Shutting down Folio")
+    backfill_task.cancel()
+    try:
+        await backfill_task
+    except asyncio.CancelledError:
+        pass
     await ingestion_worker.stop()
     await engine.dispose()
 

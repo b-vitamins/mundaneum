@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # Data directory
     bib_directory: str = "/data"
 
+    # Semantic Scholar
+    s2_api_key: str | None = None
+    s2_max_edges: int = 500
+    s2_staleness_days: int = 7
+    s2_rate_limit: float = 0.9  # reqs/sec without key (with key: auto 10.0)
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""

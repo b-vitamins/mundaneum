@@ -2,11 +2,12 @@
 Entries router for Folio API.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import desc, select
@@ -17,7 +18,7 @@ from app.database import get_db
 from app.exceptions import NotFoundError
 from app.logging import get_logger
 from app.models import Entry, EntryAuthor, S2Citation, S2Paper
-from app.services.s2 import S2Service
+from app.services.s2 import get_sync_orchestrator
 
 logger = get_logger(__name__)
 
@@ -140,7 +141,6 @@ async def list_entries(
 @router.get("/{entry_id}", response_model=EntryDetailResponse)
 async def get_entry(
     entry_id: UUID,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single entry by ID."""
@@ -168,8 +168,9 @@ async def get_entry(
     )
     abstract = optional.get("abstract")
 
-    # Trigger background sync (S2 integration)
-    background_tasks.add_task(S2Service().sync_paper, str(entry_id))
+    # Trigger S2 sync (idempotent, non-blocking background fire)
+    orchestrator = get_sync_orchestrator()
+    asyncio.ensure_future(orchestrator.ensure_synced(str(entry_id)))
 
     return EntryDetailResponse(
         id=str(entry.id),

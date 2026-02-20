@@ -10,13 +10,14 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.exceptions import NotFoundError
 from app.logging import get_logger
 from app.services.graph import get_graph_provider
+from app.services.s2 import SyncStatus, get_sync_orchestrator
 
 logger = get_logger(__name__)
 
@@ -104,13 +105,49 @@ async def get_graph(
     interactive graph visualization.
     """
     provider = get_graph_provider(db)
+    orchestrator = get_sync_orchestrator()
 
-    # Resolve entry to S2 ID
+    # Auto-trigger S2 sync if needed (idempotent)
+    sync_status = await orchestrator.ensure_synced(str(entry_id))
+
+    if sync_status == SyncStatus.SYNCING:
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "syncing",
+                "message": "Citation data is being synced. Retry shortly.",
+            },
+            headers={"Retry-After": "5"},
+        )
+
+    if sync_status == SyncStatus.NO_MATCH:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "center_id": str(entry_id),
+                "nodes": [],
+                "edges": [],
+                "prior_works": [],
+                "derivative_works": [],
+                "similarity_edges": [],
+                "message": "Could not find this paper on Semantic Scholar.",
+            },
+        )
+
+    # Resolve entry to S2 ID (should exist now after sync)
     s2_id = await provider.resolve_entry_s2_id(str(entry_id))
     if not s2_id:
-        raise NotFoundError(
-            "Graph data",
-            f"Entry {entry_id} has no Semantic Scholar ID (S2 sync may be pending)",
+        return JSONResponse(
+            status_code=200,
+            content={
+                "center_id": str(entry_id),
+                "nodes": [],
+                "edges": [],
+                "prior_works": [],
+                "derivative_works": [],
+                "similarity_edges": [],
+                "message": "S2 sync completed but no data available yet.",
+            },
         )
 
     # Fetch subgraph

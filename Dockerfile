@@ -18,6 +18,7 @@ COPY backend/pyproject.toml backend/poetry.lock ./
 RUN python -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
     poetry config virtualenvs.create false && \
+    poetry lock --no-interaction && \
     poetry install --no-interaction --no-ansi --no-root --only main && \
     pip install psycopg2-binary
 
