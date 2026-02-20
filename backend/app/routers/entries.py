@@ -328,6 +328,94 @@ async def get_pdf(
     )
 
 
+class S2MetaResponse(BaseModel):
+    """S2 metadata with sync status for progressive loading."""
+
+    sync_status: str  # "syncing" | "synced" | "no_match" | "pending"
+    s2_id: Optional[str] = None
+    title: Optional[str] = None
+    abstract: Optional[str] = None
+    tldr: Optional[str] = None
+    citation_count: Optional[int] = None
+    reference_count: Optional[int] = None
+    influential_citation_count: Optional[int] = None
+    fields_of_study: list[str] = []
+    publication_types: list[str] = []
+    is_open_access: bool = False
+    open_access_pdf_url: Optional[str] = None
+    external_ids: dict = {}
+    s2_url: Optional[str] = None
+
+
+@router.get("/{entry_id}/s2", response_model=S2MetaResponse)
+async def get_entry_s2(
+    entry_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get S2 metadata and sync status for an entry.
+
+    Triggers sync if needed. Returns current status for progressive loading.
+    Frontend polls this while sync_status == 'syncing'.
+    """
+    from app.services.s2 import SyncStatus
+
+    # Verify entry exists
+    result = await db.execute(select(Entry).where(Entry.id == entry_id))
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise NotFoundError("Entry", str(entry_id))
+
+    # Trigger sync (idempotent)
+    orchestrator = get_sync_orchestrator()
+    status = await orchestrator.ensure_synced(str(entry_id))
+
+    if status == SyncStatus.SYNCING:
+        return S2MetaResponse(sync_status="syncing")
+
+    if status == SyncStatus.NO_MATCH:
+        return S2MetaResponse(sync_status="no_match")
+
+    # Fetch S2 paper data
+    if not entry.s2_id:
+        # Refresh entry from DB (ensure_synced may have updated it)
+        await db.refresh(entry)
+
+    if not entry.s2_id:
+        return S2MetaResponse(sync_status="pending")
+
+    paper_result = await db.execute(select(S2Paper).where(S2Paper.s2_id == entry.s2_id))
+    paper = paper_result.scalar_one_or_none()
+
+    if not paper:
+        return S2MetaResponse(sync_status="pending", s2_id=entry.s2_id)
+
+    tldr_text = None
+    if paper.tldr and isinstance(paper.tldr, dict):
+        tldr_text = paper.tldr.get("text")
+
+    oa_url = None
+    if paper.open_access_pdf and isinstance(paper.open_access_pdf, dict):
+        oa_url = paper.open_access_pdf.get("url")
+
+    return S2MetaResponse(
+        sync_status="synced",
+        s2_id=paper.s2_id,
+        title=paper.title,
+        abstract=paper.abstract,
+        tldr=tldr_text,
+        citation_count=paper.citation_count,
+        reference_count=paper.reference_count,
+        influential_citation_count=paper.influential_citation_count,
+        fields_of_study=paper.fields_of_study or [],
+        publication_types=paper.publication_types or [],
+        is_open_access=paper.is_open_access or False,
+        open_access_pdf_url=oa_url,
+        external_ids=paper.external_ids or {},
+        s2_url=f"https://www.semanticscholar.org/paper/{paper.s2_id}",
+    )
+
+
 class S2PaperResponse(BaseModel):
     s2_id: str
     title: str

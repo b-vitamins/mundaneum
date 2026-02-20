@@ -84,6 +84,23 @@ export interface EntryDetail {
     source_file: string
 }
 
+export interface S2Meta {
+    sync_status: 'syncing' | 'synced' | 'no_match' | 'pending'
+    s2_id: string | null
+    title: string | null
+    abstract: string | null
+    tldr: string | null
+    citation_count: number | null
+    reference_count: number | null
+    influential_citation_count: number | null
+    fields_of_study: string[]
+    publication_types: string[]
+    is_open_access: boolean
+    open_access_pdf_url: string | null
+    external_ids: Record<string, unknown>
+    s2_url: string | null
+}
+
 export interface Collection {
     id: string
     name: string
@@ -344,6 +361,15 @@ export const api = {
     async getEntry(id: string): Promise<EntryDetail> {
         try {
             const { data } = await withRetry(() => client.get(`/entries/${id}`))
+            return data
+        } catch (error) {
+            return handleError(error)
+        }
+    },
+
+    async getEntryS2(id: string): Promise<S2Meta> {
+        try {
+            const { data } = await withRetry(() => client.get(`/entries/${id}/s2`))
             return data
         } catch (error) {
             return handleError(error)
