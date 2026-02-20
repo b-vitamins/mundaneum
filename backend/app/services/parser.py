@@ -165,6 +165,146 @@ for slug, (_, _, aliases) in VENUE_DATA.items():
         _VENUE_ALIAS_MAP[alias.lower()] = slug
 
 
+# Subject prefix mapping: abbreviated code -> full name
+SUBJECT_PREFIXES: dict[str, str] = {
+    "phy": "Physics",
+    "cs": "Computer Science",
+    "math": "Mathematics",
+    "prog": "Programming",
+    "stat": "Statistics",
+    "bio": "Biology",
+    "biology": "Biology",
+    "chem": "Chemistry",
+    "econ": "Economics",
+    "eng": "Engineering",
+    "neuro": "Neuroscience",
+    "phil": "Philosophy",
+}
+
+# Full-slug subjects that should NOT be split by prefix
+# These are treated as top-level categories with no subarea
+FULL_SLUG_SUBJECTS: dict[str, str] = {
+    "popular-science": "Popular Science",
+    "science-fiction": "Science Fiction",
+    "science-history": "History of Science",
+    "self-help": "Self Help",
+    "design": "Design",
+    "engineering": "Engineering",
+    "environment": "Environment",
+    "philosophy": "Philosophy",
+    "psychology": "Psychology",
+    "writing": "Writing",
+    "biology": "Biology",
+}
+
+# Context-aware subarea mapping: "prefix:subarea_slug" -> display_name
+# Falls back to generic SUBAREA_NAMES if no context-specific match
+_CONTEXT_SUBAREA_NAMES: dict[str, str] = {
+    # Physics-specific
+    "phy:general": "General Relativity",
+    "phy:quantum": "Quantum Mechanics",
+    "phy:statistical": "Statistical Mechanics",
+    "phy:mathematical": "Mathematical Physics",
+    # CS-specific
+    "cs:general": "General",
+    "cs:quantum": "Quantum Computing",
+    "cs:os": "Operating Systems",
+    # Math-specific
+    "math:general": "General",
+    "math:statistics": "Statistics",
+    # Programming-specific
+    "prog:general": "General",
+    "prog:design": "Software Design",
+    "prog:languages": "Programming Languages",
+}
+
+# Generic subarea name mapping (used when no context-specific match)
+SUBAREA_NAMES: dict[str, str] = {
+    "ml": "Machine Learning",
+    "ai": "Artificial Intelligence",
+    "ml-ai": "Machine Learning & AI",
+    "architecture": "Computer Architecture",
+    "vision": "Computer Vision",
+    "nlp": "Natural Language Processing",
+    "graphics": "Graphics",
+    "security": "Security",
+    "networks": "Networks",
+    "databases": "Databases",
+    "systems": "Systems",
+    "theory": "Theory",
+    "classical": "Classical Mechanics",
+    "field-theory": "Field Theory",
+    "qft": "Quantum Field Theory",
+    "condensed": "Condensed Matter",
+    "particle": "Particle Physics",
+    "astro": "Astrophysics",
+    "electrodynamics": "Electrodynamics",
+    "thermodynamics": "Thermodynamics",
+    "relativity": "Relativity",
+    "analysis": "Analysis",
+    "algebra": "Algebra",
+    "geometry": "Geometry",
+    "topology": "Topology",
+    "number-theory": "Number Theory",
+    "information-theory": "Information Theory",
+    "probability": "Probability",
+    "combinatorics": "Combinatorics",
+    "neuroscience": "Neuroscience",
+    "algorithms": "Algorithms",
+    "functional": "Functional Programming",
+    "oop": "Object-Oriented Programming",
+    "fp": "Functional Programming",
+    "compilers": "Compilers",
+}
+
+
+def parse_subject_name(slug: str) -> tuple[str, str | None, str]:
+    """
+    Parse a subject slug into parent category, subarea, and display name.
+
+    Handles three cases:
+    1. Full-slug matches (e.g., "popular-science" -> standalone category)
+    2. Prefix-based splits (e.g., "cs-ml-ai" -> CS / ML & AI)
+    3. Context-aware subarea names (e.g., phy-general != cs-general)
+
+    Returns:
+        (parent_name, subarea_name, display_name)
+    """
+    # 1. Check full-slug overrides first
+    if slug in FULL_SLUG_SUBJECTS:
+        name = FULL_SLUG_SUBJECTS[slug]
+        return name, None, name
+
+    # 2. Try prefix-based split
+    parts = slug.split("-", 1)
+    prefix = parts[0].lower()
+
+    # Get parent category
+    parent = SUBJECT_PREFIXES.get(prefix)
+
+    if parent is None:
+        # Unknown prefix, treat the whole slug as a standalone category
+        name = slug.replace("-", " ").replace("_", " ").title()
+        return name, None, name
+
+    if len(parts) == 1:
+        # No subarea, just the parent
+        return parent, None, parent
+
+    # 3. Get subarea name with context awareness
+    subarea_slug = parts[1]
+    context_key = f"{prefix}:{subarea_slug}"
+
+    # Try context-specific first, then generic, then title-case fallback
+    subarea = (
+        _CONTEXT_SUBAREA_NAMES.get(context_key)
+        or SUBAREA_NAMES.get(subarea_slug)
+        or subarea_slug.replace("-", " ").title()
+    )
+
+    return parent, subarea, subarea
+
+
 def parse_folio_comment(content: str) -> dict[str, str | list[str]]:
     """
     Parse @COMMENT{folio: ...} blocks from raw file content.

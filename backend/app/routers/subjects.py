@@ -22,6 +22,8 @@ class SubjectListItem(BaseModel):
     id: str
     slug: str
     name: str
+    parent_slug: str | None = None
+    display_name: str | None = None
     entry_count: int
 
     model_config = {"from_attributes": True}
@@ -100,6 +102,8 @@ async def list_subjects(
             id=str(row.Subject.id),
             slug=row.Subject.slug,
             name=row.Subject.name,
+            parent_slug=row.Subject.parent_slug,
+            display_name=row.Subject.display_name,
             entry_count=row.entry_count,
         )
         for row in rows

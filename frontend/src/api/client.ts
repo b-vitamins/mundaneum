@@ -217,6 +217,8 @@ export interface SubjectListItem {
     id: string
     slug: string
     name: string
+    parent_slug: string | null
+    display_name: string | null
     entry_count: number
 }
 

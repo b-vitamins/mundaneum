@@ -1,27 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
 import { api, type SubjectListItem } from '@/api/client'
-
-const route = useRoute()
-const router = useRouter()
 
 // State
 const subjects = ref<SubjectListItem[]>([])
 const loading = ref(true)
 const error = ref('')
-
-// Sorting
-type SortField = 'name' | 'entry_count'
-type SortOrder = 'asc' | 'desc'
-
-const sortBy = ref<SortField>((route.query.sort as SortField) || 'name')
-const sortOrder = ref<SortOrder>((route.query.order as SortOrder) || 'asc')
-
-const sortOptions: { value: SortField; label: string }[] = [
-  { value: 'name', label: 'Name' },
-  { value: 'entry_count', label: 'Entry Count' },
-]
 
 // Actions
 async function loadSubjects() {
@@ -29,7 +13,7 @@ async function loadSubjects() {
   error.value = ''
   
   try {
-    subjects.value = await api.listSubjects(200, 0, sortBy.value, sortOrder.value)
+    subjects.value = await api.listSubjects(200, 0, 'name', 'asc')
   } catch (e) {
     console.error('Failed to load subjects:', e)
     error.value = 'Failed to load subjects'
@@ -38,19 +22,60 @@ async function loadSubjects() {
   }
 }
 
-function changeSort(field: SortField) {
-  if (sortBy.value === field) {
-    sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
-  } else {
-    sortBy.value = field
-    sortOrder.value = field === 'entry_count' ? 'desc' : 'asc'
+// Group subjects by parent category
+const groupedSubjects = computed(() => {
+  const groups: Record<string, SubjectListItem[]> = {}
+  
+  for (const subject of subjects.value) {
+    const parent = subject.parent_slug || 'other'
+    // Convert parent_slug to display name (e.g., "computer-science" -> "Computer Science")
+    const parentDisplay = parent.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    
+    if (!groups[parentDisplay]) {
+      groups[parentDisplay] = []
+    }
+    groups[parentDisplay].push(subject)
   }
   
-  router.replace({ 
-    query: { ...route.query, sort: sortBy.value, order: sortOrder.value } 
+  // Sort groups alphabetically, but put "Other" last
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    if (a === 'Other') return 1
+    if (b === 'Other') return -1
+    return a.localeCompare(b)
   })
   
-  loadSubjects()
+  const sortedGroups: Record<string, SubjectListItem[]> = {}
+  for (const key of sortedKeys) {
+    // Sort children by entry count descending
+    sortedGroups[key] = groups[key].sort((a, b) => b.entry_count - a.entry_count)
+  }
+  
+  return sortedGroups
+})
+
+// Category icons
+const categoryIcons: Record<string, string> = {
+  'Physics': '⚛️',
+  'Computer Science': '💻',
+  'Mathematics': '📐',
+  'Programming': '🖥️',
+  'Statistics': '📊',
+  'Biology': '🧬',
+  'Chemistry': '🧪',
+  'Economics': '📈',
+  'Engineering': '⚙️',
+  'Neuroscience': '🧠',
+  'Philosophy': '🤔',
+  'Other': '📚',
+}
+
+function getIcon(category: string): string {
+  return categoryIcons[category] || '📁'
+}
+
+// Total entries per category
+function getCategoryEntryCount(children: SubjectListItem[]): number {
+  return children.reduce((sum, s) => sum + s.entry_count, 0)
 }
 
 onMounted(loadSubjects)
@@ -65,25 +90,6 @@ onMounted(loadSubjects)
     </header>
 
     <main class="content">
-      <!-- Sort controls -->
-      <div class="controls">
-        <span class="sort-label">Sort by:</span>
-        <div class="sort-buttons">
-          <button
-            v-for="opt in sortOptions"
-            :key="opt.value"
-            :class="['sort-btn', { active: sortBy === opt.value }]"
-            @click="changeSort(opt.value)"
-          >
-            {{ opt.label }}
-            <span v-if="sortBy === opt.value" class="sort-arrow">
-              {{ sortOrder === 'desc' ? '↓' : '↑' }}
-            </span>
-          </button>
-        </div>
-        <span class="count">{{ subjects.length }} subjects</span>
-      </div>
-
       <!-- Loading state -->
       <div v-if="loading" class="status">
         <span class="spinner"></span>
@@ -98,17 +104,31 @@ onMounted(loadSubjects)
         No subjects found.
       </div>
 
-      <!-- Subjects grid -->
-      <div v-else class="subjects-grid">
-        <router-link
-          v-for="subject in subjects"
-          :key="subject.id"
-          :to="`/subjects/${subject.slug}`"
-          class="subject-card"
+      <!-- Hierarchical subjects display -->
+      <div v-else class="subjects-hierarchy">
+        <section 
+          v-for="(children, category) in groupedSubjects" 
+          :key="category"
+          class="category-section"
         >
-          <span class="subject-name">{{ subject.name }}</span>
-          <span class="subject-count">{{ subject.entry_count }} entries</span>
-        </router-link>
+          <h2 class="category-header">
+            <span class="category-icon">{{ getIcon(category) }}</span>
+            <span class="category-name">{{ category }}</span>
+            <span class="category-count">{{ getCategoryEntryCount(children) }} entries</span>
+          </h2>
+          
+          <div class="subareas-grid">
+            <router-link
+              v-for="subject in children"
+              :key="subject.id"
+              :to="`/subjects/${subject.slug}`"
+              class="subarea-card"
+            >
+              <span class="subarea-name">{{ subject.display_name || subject.name }}</span>
+              <span class="subarea-count">{{ subject.entry_count }}</span>
+            </router-link>
+          </div>
+        </section>
       </div>
     </main>
   </div>
@@ -161,58 +181,6 @@ onMounted(loadSubjects)
   padding: var(--space-6);
 }
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-
-.sort-label {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
-.sort-buttons {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.sort-btn {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.sort-btn:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.sort-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-
-.sort-arrow {
-  margin-left: var(--space-1);
-}
-
-.count {
-  margin-left: auto;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
 .status {
   text-align: center;
   padding: var(--space-8);
@@ -240,35 +208,78 @@ onMounted(loadSubjects)
   to { transform: rotate(360deg); }
 }
 
-.subjects-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-3);
+/* Hierarchical layout */
+.subjects-hierarchy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
 }
 
-.subject-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-4);
+.category-section {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  transition: all 0.15s ease;
+  overflow: hidden;
 }
 
-.subject-card:hover {
-  border-color: var(--accent);
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.category-icon {
+  font-size: 1.5rem;
+}
+
+.category-name {
+  flex: 1;
+  color: var(--text);
+}
+
+.category-count {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.subareas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1px;
+  background: var(--border);
+}
+
+.subarea-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  transition: background 0.15s ease;
+}
+
+.subarea-card:hover {
+  background: var(--bg);
   text-decoration: none;
 }
 
-.subject-name {
+.subarea-name {
   font-weight: 500;
   color: var(--text);
 }
 
-.subject-count {
+.subarea-count {
   font-size: var(--text-sm);
   color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg);
+  border-radius: 12px;
 }
 </style>

@@ -79,7 +79,7 @@ async def get_or_create_venue(session: AsyncSession, slug: str) -> Venue | None:
 
 
 async def get_or_create_subject(session: AsyncSession, slug: str) -> Subject | None:
-    """Get existing subject or create new one."""
+    """Get existing subject or create new one with hierarchical fields."""
     if not slug:
         return None
 
@@ -87,9 +87,21 @@ async def get_or_create_subject(session: AsyncSession, slug: str) -> Subject | N
     subject = result.scalar_one_or_none()
 
     if not subject:
-        # Derive display name from slug
-        name = slug.replace("-", " ").replace("_", " ").title()
-        subject = Subject(slug=slug, name=name)
+        # Use parse_subject_name for proper name derivation
+        from app.services.parser import parse_subject_name
+
+        parent, subarea, display_name = parse_subject_name(slug)
+        parent_slug = parent.lower().replace(" ", "-")
+
+        # Build full name: "Physics: Quantum Computing" or just "Physics"
+        name = f"{parent}: {subarea}" if subarea else parent
+
+        subject = Subject(
+            slug=slug,
+            name=name,
+            parent_slug=parent_slug,
+            display_name=display_name,
+        )
         session.add(subject)
         await session.flush()
 

@@ -335,6 +335,10 @@ class Subject(Base):
     Subject areas for books, extracted from file-level @COMMENT.
 
     Examples: cs-ml-ai, phy-quantum, math-analysis.
+
+    Hierarchical structure:
+    - parent_slug: Parent category (e.g., "physics", "computer-science")
+    - display_name: Human-readable subarea name (e.g., "Machine Learning & AI")
     """
 
     __tablename__ = "subjects"
@@ -344,6 +348,12 @@ class Subject(Base):
     )
     slug: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+
+    # Hierarchical fields
+    parent_slug: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, index=True
+    )
+    display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     entries: Mapped[list["Entry"]] = relationship("Entry", back_populates="subject")
 
