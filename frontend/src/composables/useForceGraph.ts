@@ -218,18 +218,36 @@ class ForceLayout implements GraphLayout {
     private alphaDecay = 0.02
     private alphaMin = 0.001
 
-    // Force parameters
+    // Force parameters — can be tuned per mode
     private repulsionStrength = 300
     private springStrength = 0.05
-    private springLength = 120
+    private baseSpringLength = 120
     private centerStrength = 0.01
     private damping = 0.85
     private theta = 0.9  // Barnes-Hut threshold
+    private isSimilarityMode = false
 
     init(nodes: SimNode[], edges: SimEdge[]) {
         this.nodes = nodes
         this.edges = edges
         this.alpha = 1.0
+
+        // Detect similarity mode from edge weights
+        this.isSimilarityMode = edges.some(e => e.weight !== undefined && e.weight > 0)
+
+        if (this.isSimilarityMode) {
+            // Connected Papers style: tighter clusters, softer repulsion
+            this.repulsionStrength = 150
+            this.springStrength = 0.08
+            this.baseSpringLength = 80
+            this.centerStrength = 0.005
+        } else {
+            // Citation mode: broader layout
+            this.repulsionStrength = 300
+            this.springStrength = 0.05
+            this.baseSpringLength = 120
+            this.centerStrength = 0.01
+        }
 
         // Initialize positions in a circle
         const n = nodes.length
@@ -254,12 +272,23 @@ class ForceLayout implements GraphLayout {
             computeRepulsion(node, tree, this.theta, this.repulsionStrength * this.alpha)
         }
 
-        // 2. Spring forces (edges)
+        // 2. Spring forces (edges) — weight-based length in similarity mode
         for (const edge of this.edges) {
             const dx = edge.target.x - edge.source.x
             const dy = edge.target.y - edge.source.y
             const dist = Math.sqrt(dx * dx + dy * dy) || 1
-            const force = (dist - this.springLength) * this.springStrength * this.alpha
+
+            // In similarity mode: high weight → short spring (close together)
+            // springLength = (1 - weight) * 200 + 40  →  range [40, 240]
+            let targetDist = this.baseSpringLength
+            let strength = this.springStrength
+            if (this.isSimilarityMode && edge.weight !== undefined) {
+                targetDist = (1 - edge.weight) * 200 + 40
+                // Stronger pull for high-similarity edges
+                strength = this.springStrength * (0.5 + edge.weight)
+            }
+
+            const force = (dist - targetDist) * strength * this.alpha
             const fx = force * dx / dist
             const fy = force * dy / dist
             edge.source.vx += fx
@@ -390,7 +419,8 @@ class CanvasRenderer implements GraphRenderer {
             Math.abs(n.x + camera.x) < visW + 50 &&
             Math.abs(n.y + camera.y) < visH + 50
         )
-        const showAllLabels = visibleNodes.length < 30
+        // In similarity mode, always show labels (matching Connected Papers)
+        const showAllLabels = state.viewMode === 'similarity' || visibleNodes.length < 30
 
         for (const node of nodes) {
             const isCenter = node.id === state.centerId
@@ -401,8 +431,10 @@ class CanvasRenderer implements GraphRenderer {
 
             const r = node.radius
 
-            // Year-based color
-            const color = yearColor(node.data.year, state.isDark)
+            // Color: year-based in citation mode, citation-count gradient in similarity mode
+            const color = state.viewMode === 'similarity'
+                ? citationColor(node.data.citation_count, state.isDark)
+                : yearColor(node.data.year, state.isDark)
 
             // Draw node circle
             ctx.beginPath()
@@ -526,6 +558,26 @@ function yearColor(year: number | null, isDark: boolean): string {
     return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.9)`
 }
 
+function citationColor(citationCount: number, isDark: boolean): string {
+    // Connected Papers style: teal gradient based on citation count
+    // Low citations = light teal, high citations = dark teal
+    const logCites = Math.log10(Math.max(1, citationCount))
+    const maxLog = 5  // ~100k citations
+    const t = Math.min(1, logCites / maxLog)
+
+    if (isDark) {
+        // Dark mode: light teal (180, 40%, 65%) → saturated teal (180, 70%, 40%)
+        const saturation = 40 + t * 30
+        const lightness = 65 - t * 25
+        return `hsla(175, ${saturation}%, ${lightness}%, 0.9)`
+    } else {
+        // Light mode: light teal → dark teal
+        const saturation = 35 + t * 35
+        const lightness = 70 - t * 30
+        return `hsla(175, ${saturation}%, ${lightness}%, 0.9)`
+    }
+}
+
 function truncateLabel(text: string, maxLen: number): string {
     if (text.length <= maxLen) return text
     return text.slice(0, maxLen - 1) + '…'
@@ -609,10 +661,10 @@ export function useForceGraph() {
             centerNode.y = 0
         }
 
-        // Init layout
+        // Init layout — default to similarity mode (Connected Papers style)
         isSettled.value = false
-        viewMode.value = 'citation'
-        buildEdges('citation')
+        viewMode.value = 'similarity'
+        buildEdges('similarity')
         layout.init(simNodes, simEdges)
 
         // Reset camera

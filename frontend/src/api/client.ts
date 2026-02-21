@@ -485,7 +485,8 @@ export const api = {
         try {
             const { data } = await withRetry(() =>
                 client.get(`/graph/${entryId}`, {
-                    params: { depth, max_nodes: maxNodes }
+                    params: { depth, max_nodes: maxNodes },
+                    timeout: 120000,  // Graph endpoint needs extra time for S2 API enrichment
                 })
             )
             return data

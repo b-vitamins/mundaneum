@@ -9,17 +9,21 @@ the router or any consumer code.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
-from collections import Counter, deque
+from collections import Counter
 from dataclasses import dataclass, field
 from itertools import combinations
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Entry, S2Citation, S2Paper
+
+if TYPE_CHECKING:
+    from app.services.s2 import S2Transport
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +140,23 @@ class GraphProvider(Protocol):
 class SQLAlchemyGraphProvider:
     """
     Graph provider backed by the existing S2Paper and S2Citation
-    tables via SQLAlchemy async queries.
+    tables via SQLAlchemy async queries + live S2 API enrichment.
 
-    BFS expansion, in-library detection, citation-count ranking.
-    Efficient for subgraphs up to a few hundred nodes.
+    Connected Papers style similarity-first node selection:
+    1. Gather 1-hop candidates from local DB
+    2. Enrich top candidates via S2 API (fetch their references)
+    3. Rank candidates by co-citation + bibliographic coupling similarity
+    4. Select top-N most similar papers
+    5. Compute pairwise similarity edges between selected papers
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        transport: S2Transport | None = None,
+    ):
         self.session = session
+        self._transport = transport
 
     async def resolve_entry_s2_id(self, entry_id: str) -> str | None:
         """Resolve a Folio entry UUID to its Semantic Scholar paper ID."""
@@ -152,6 +165,131 @@ class SQLAlchemyGraphProvider:
         )
         return result.scalar_one_or_none()
 
+    async def _fetch_edges_db(
+        self, paper_ids: list[str], chunk_size: int = 500
+    ) -> list[tuple[str, str, bool]]:
+        """Fetch all citation edges from local DB touching the given paper IDs."""
+        edges: list[tuple[str, str, bool]] = []
+
+        for i in range(0, len(paper_ids), chunk_size):
+            chunk = paper_ids[i : i + chunk_size]
+
+            outgoing = await self.session.execute(
+                select(
+                    S2Citation.source_id,
+                    S2Citation.target_id,
+                    S2Citation.is_influential,
+                ).where(S2Citation.source_id.in_(chunk))
+            )
+            for src, tgt, inf in outgoing:
+                edges.append((src, tgt, inf))
+
+            incoming = await self.session.execute(
+                select(
+                    S2Citation.source_id,
+                    S2Citation.target_id,
+                    S2Citation.is_influential,
+                ).where(S2Citation.target_id.in_(chunk))
+            )
+            for src, tgt, inf in incoming:
+                edges.append((src, tgt, inf))
+
+        return edges
+
+    async def _enrich_from_api(
+        self,
+        paper_ids: list[str],
+        max_papers: int = 30,
+    ) -> list[tuple[str, str, bool]]:
+        """
+        Fetch references for candidate papers via the S2 API.
+
+        Only fetches references (what each candidate cites) — this provides
+        the bibliographic coupling signal. Co-citation data already comes
+        from the local DB's 1-hop edges for the center paper.
+
+        Rate-limited: 3 concurrent requests at a time to stay under S2's
+        unauthenticated rate limit of ~1 req/sec.
+        """
+        if not self._transport:
+            return []
+
+        ids_to_fetch = paper_ids[:max_papers]
+        edges: list[tuple[str, str, bool]] = []
+
+        # Fetch references in small batches to avoid 429s
+        batch_size = 3
+        for batch_start in range(0, len(ids_to_fetch), batch_size):
+            batch = ids_to_fetch[batch_start : batch_start + batch_size]
+
+            tasks = [
+                self._transport.get(
+                    f"paper/{pid}/references",
+                    params={
+                        "fields": "citedPaper.paperId,isInfluential",
+                        "limit": "100",
+                    },
+                )
+                for pid in batch
+            ]
+            results = await asyncio.gather(*tasks)
+
+            for pid, result in zip(batch, results):
+                if not result or not result.get("data"):
+                    continue
+                for item in result["data"]:
+                    cited = item.get("citedPaper") or {}
+                    cited_id = cited.get("paperId")
+                    if not cited_id:
+                        continue
+                    is_inf = item.get("isInfluential", False)
+                    edges.append((pid, cited_id, is_inf))
+
+        logger.info(
+            "API enrichment: fetched %d reference edges for %d papers",
+            len(edges),
+            len(ids_to_fetch),
+        )
+        return edges
+
+    def _build_neighborhoods(
+        self, edges: list[tuple[str, str, bool]]
+    ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+        """Build citers-of and refs-of maps from edge list."""
+        citers_of: dict[str, set[str]] = {}
+        refs_of: dict[str, set[str]] = {}
+
+        for src, tgt, _ in edges:
+            citers_of.setdefault(tgt, set()).add(src)
+            refs_of.setdefault(src, set()).add(tgt)
+
+        return citers_of, refs_of
+
+    def _similarity_to_center(
+        self,
+        center_id: str,
+        candidate_id: str,
+        citers_of: dict[str, set[str]],
+        refs_of: dict[str, set[str]],
+    ) -> float:
+        """
+        Compute similarity between a candidate paper and the center paper.
+
+        Uses max(co-citation Jaccard, bibliographic coupling Jaccard).
+        Connected Papers uses a similar metric.
+        """
+        cc = citers_of.get(center_id, set())
+        ca = citers_of.get(candidate_id, set())
+        cc_union = len(cc | ca)
+        jc_cocite = len(cc & ca) / cc_union if cc_union > 0 else 0.0
+
+        rc = refs_of.get(center_id, set())
+        ra = refs_of.get(candidate_id, set())
+        bc_union = len(rc | ra)
+        jc_bibcoup = len(rc & ra) / bc_union if bc_union > 0 else 0.0
+
+        return max(jc_cocite, jc_bibcoup)
+
     async def get_subgraph(
         self,
         center_s2_id: str,
@@ -159,90 +297,127 @@ class SQLAlchemyGraphProvider:
         max_nodes: int = 80,
     ) -> GraphData:
         """
-        BFS expansion over S2Citation edges.
+        Similarity-first graph construction (Connected Papers style).
 
-        1. Start from center_s2_id.
-        2. At each depth level, fetch all citation edges (both directions).
-        3. Collect unique paper IDs.
-        4. Fetch paper metadata for all discovered IDs.
-        5. Cross-reference against Entry.s2_id for in-library detection.
-        6. Cap at max_nodes by citation count (center always included).
+        1. Gather 1-hop candidates from local DB.
+        2. Pre-filter top candidates by citation count.
+        3. Enrich via S2 API: fetch references + citations for candidates.
+        4. Build neighborhoods from combined local + API data.
+        5. Rank each candidate by Jaccard similarity to center.
+        6. Select top max_nodes most similar papers.
         """
-        depth = min(depth, 2)  # Hard cap at 2 hops
-        max_nodes = min(max_nodes, 200)  # Hard cap at 200
+        max_nodes = min(max_nodes, 200)
 
-        # ── BFS to discover paper IDs and edges ──
-        visited: set[str] = {center_s2_id}
-        frontier: deque[str] = deque([center_s2_id])
-        all_edges: list[tuple[str, str, bool]] = []  # (source, target, influential)
-        current_depth = 0
+        # ── Step 1: Gather 1-hop candidates from local DB ──
+        hop1_edges = await self._fetch_edges_db([center_s2_id])
 
-        while frontier and current_depth < depth:
-            level_size = len(frontier)
-            next_ids: set[str] = set()
+        candidate_ids: set[str] = set()
+        for src, tgt, _ in hop1_edges:
+            candidate_ids.add(src)
+            candidate_ids.add(tgt)
+        candidate_ids.discard(center_s2_id)
 
-            # Process in batches (the frontier for this depth level)
-            level_ids = [frontier.popleft() for _ in range(level_size)]
+        if not candidate_ids:
+            logger.info("No candidates found for %s", center_s2_id)
+            return GraphData(center_id=center_s2_id)
 
-            # Fetch outgoing edges (this paper cites others)
-            outgoing = await self.session.execute(
-                select(
-                    S2Citation.source_id,
-                    S2Citation.target_id,
-                    S2Citation.is_influential,
-                ).where(S2Citation.source_id.in_(level_ids))
-            )
-            for src, tgt, influential in outgoing:
-                all_edges.append((src, tgt, influential))
-                if tgt not in visited:
-                    next_ids.add(tgt)
+        logger.info(
+            "Graph %s: %d 1-hop candidates found",
+            center_s2_id,
+            len(candidate_ids),
+        )
 
-            # Fetch incoming edges (others cite this paper)
-            incoming = await self.session.execute(
-                select(
-                    S2Citation.source_id,
-                    S2Citation.target_id,
-                    S2Citation.is_influential,
-                ).where(S2Citation.target_id.in_(level_ids))
-            )
-            for src, tgt, influential in incoming:
-                all_edges.append((src, tgt, influential))
-                if src not in visited:
-                    next_ids.add(src)
-
-            # Add discovered IDs to visited and frontier
-            visited.update(next_ids)
-            frontier.extend(next_ids)
-            current_depth += 1
-
-        # ── Fetch paper metadata for all discovered IDs ──
-        all_paper_ids = list(visited)
-        papers_by_id: dict[str, S2Paper] = {}
-
-        # Batch fetch in chunks of 500 to avoid overly large IN clauses
+        # ── Step 2: Pre-filter top candidates by citation count ──
+        # Fetch metadata for ranking (we need citation counts)
         chunk_size = 500
-        for i in range(0, len(all_paper_ids), chunk_size):
-            chunk = all_paper_ids[i : i + chunk_size]
+        all_papers: dict[str, S2Paper] = {}
+        cand_list = list(candidate_ids | {center_s2_id})
+        for i in range(0, len(cand_list), chunk_size):
+            chunk = cand_list[i : i + chunk_size]
+            result = await self.session.execute(
+                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
+            )
+            for paper in result.scalars():
+                all_papers[paper.s2_id] = paper
+
+        # Sort candidates by citation count, take top 100 for API enrichment
+        ranked_candidates = sorted(
+            candidate_ids,
+            key=lambda pid: (all_papers[pid].citation_count or 0)
+            if pid in all_papers
+            else 0,
+            reverse=True,
+        )
+        api_candidates = ranked_candidates[:100]
+
+        # ── Step 3: Enrich via S2 API ──
+        api_edges = await self._enrich_from_api(api_candidates)
+
+        # Merge local DB edges + API edges
+        edge_set: set[tuple[str, str, bool]] = set()
+        for e in hop1_edges:
+            edge_set.add(e)
+        for e in api_edges:
+            edge_set.add(e)
+        all_edges = list(edge_set)
+
+        logger.info(
+            "Graph %s: %d total edges (local + API)",
+            center_s2_id,
+            len(all_edges),
+        )
+
+        # ── Step 4: Build neighborhoods and rank by similarity ──
+        citers_of, refs_of = self._build_neighborhoods(all_edges)
+
+        scored: list[tuple[str, float]] = []
+        for cid in candidate_ids:
+            sim = self._similarity_to_center(center_s2_id, cid, citers_of, refs_of)
+            scored.append((cid, sim))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # ── Step 5: Select top max_nodes ──
+        selected_ids = {center_s2_id}
+        for cid, sim in scored[: max_nodes - 1]:
+            if sim > 0:
+                selected_ids.add(cid)
+
+        logger.info(
+            "Graph %s: %d nodes selected (of %d candidates with sim > 0)",
+            center_s2_id,
+            len(selected_ids),
+            sum(1 for _, s in scored if s > 0),
+        )
+
+        # ── Fetch paper metadata for selected nodes ──
+        # Use already-fetched papers + any new ones from API data
+        papers_by_id: dict[str, S2Paper] = {}
+        for pid in selected_ids:
+            if pid in all_papers:
+                papers_by_id[pid] = all_papers[pid]
+
+        # Fetch any missing papers
+        missing = [pid for pid in selected_ids if pid not in papers_by_id]
+        for i in range(0, len(missing), chunk_size):
+            chunk = missing[i : i + chunk_size]
             result = await self.session.execute(
                 select(S2Paper).where(S2Paper.s2_id.in_(chunk))
             )
             for paper in result.scalars():
                 papers_by_id[paper.s2_id] = paper
 
-        # ── Rank and cap nodes ──
-        # Center always included; others ranked by citation count
-        ranked_ids = sorted(
-            [pid for pid in papers_by_id if pid != center_s2_id],
-            key=lambda pid: papers_by_id[pid].citation_count or 0,
-            reverse=True,
-        )
-        # Keep center + top (max_nodes - 1)
-        selected_ids = {center_s2_id} | set(ranked_ids[: max_nodes - 1])
+        selected_id_list = list(selected_ids)
+        for i in range(0, len(selected_id_list), chunk_size):
+            chunk = selected_id_list[i : i + chunk_size]
+            result = await self.session.execute(
+                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
+            )
+            for paper in result.scalars():
+                papers_by_id[paper.s2_id] = paper
 
         # ── In-library detection ──
-        # Cross-reference selected s2_ids against Entry.s2_id
-        library_map: dict[str, str] = {}  # s2_id -> entry_id
-        selected_id_list = list(selected_ids)
+        library_map: dict[str, str] = {}
         for i in range(0, len(selected_id_list), chunk_size):
             chunk = selected_id_list[i : i + chunk_size]
             result = await self.session.execute(
@@ -253,14 +428,13 @@ class SQLAlchemyGraphProvider:
             for s2_id, entry_id in result:
                 library_map[s2_id] = str(entry_id)
 
-        # ── Build response ──
+        # ── Build GraphNode list ──
         nodes: list[GraphNode] = []
         for pid in selected_ids:
             paper = papers_by_id.get(pid)
             if not paper:
                 continue
 
-            # Extract first 3 author names
             authors = []
             if paper.authors:
                 for a in paper.authors[:3]:
@@ -283,7 +457,7 @@ class SQLAlchemyGraphProvider:
                 )
             )
 
-        # Filter edges to only include selected nodes
+        # ── Citation edges (for citation view) ──
         edges: list[GraphEdge] = []
         seen_edges: set[tuple[str, str]] = set()
         for src, tgt, influential in all_edges:
@@ -299,24 +473,24 @@ class SQLAlchemyGraphProvider:
                         )
                     )
 
-        # ── Compute similarity edges ──
+        # ── Similarity edges (for similarity view — primary) ──
         similarity_edges = self._compute_similarity(selected_ids, all_edges)
 
-        # ── Compute Prior & Derivative Works ──
+        # ── Prior & Derivative Works ──
         prior_works = await self._compute_aggregate(selected_ids, direction="prior")
         derivative_works = await self._compute_aggregate(
             selected_ids, direction="derivative"
         )
 
         logger.info(
-            "Graph for %s: %d nodes, %d edges, %d prior, %d derivative (depth=%d, max=%d)",
+            "Graph for %s: %d nodes, %d citation edges, %d similarity edges, "
+            "%d prior, %d derivative",
             center_s2_id,
             len(nodes),
             len(edges),
+            len(similarity_edges),
             len(prior_works),
             len(derivative_works),
-            depth,
-            max_nodes,
         )
 
         return GraphData(
@@ -332,27 +506,20 @@ class SQLAlchemyGraphProvider:
         self,
         selected_ids: set[str],
         all_edges: list[tuple[str, str, bool]],
-        min_weight: float = 0.05,
+        min_weight: float = 0.03,
     ) -> list[SimilarityEdge]:
         """
-        Compute similarity edges via co-citation + bibliographic coupling.
+        Compute pairwise similarity edges via co-citation + bibliographic coupling.
 
         Co-citation:  How many papers cite BOTH A and B?
         Bib coupling: How many papers are cited by BOTH A and B?
         Combined:     max(jaccard_cocitation, jaccard_coupling)
 
-        This is an alternative "lens" on the same graph data —
-        one of many possible views, not privileged above others.
+        Lower threshold (0.03) than before to produce denser edges for
+        the force-directed layout — proximity should encode similarity.
         """
-        # Build per-paper neighborhoods from ALL edges (not just selected)
-        citers_of: dict[str, set[str]] = {}  # paper -> set of papers that cite it
-        refs_of: dict[str, set[str]] = {}  # paper -> set of papers it cites
+        citers_of, refs_of = self._build_neighborhoods(all_edges)
 
-        for src, tgt, _ in all_edges:
-            citers_of.setdefault(tgt, set()).add(src)
-            refs_of.setdefault(src, set()).add(tgt)
-
-        # Compute pairwise Jaccard for selected nodes
         selected_list = list(selected_ids)
         sim_edges: list[SimilarityEdge] = []
 
@@ -369,35 +536,34 @@ class SQLAlchemyGraphProvider:
             bc_union = len(ra | rb)
             jc_bibcoup = len(ra & rb) / bc_union if bc_union > 0 else 0.0
 
-            # Combined: max of both signals
             weight = max(jc_cocite, jc_bibcoup)
 
             if weight >= min_weight:
                 sim_edges.append(SimilarityEdge(source=a, target=b, weight=weight))
 
-        # Sort by weight descending, cap at reasonable number
         sim_edges.sort(key=lambda e: e.weight, reverse=True)
-        return sim_edges[:500]
+        return sim_edges[:800]
 
     async def _compute_aggregate(
         self,
         graph_ids: set[str],
         direction: str,
-        limit: int = 15,
+        limit: int = 20,
     ) -> list[AggregateEntry]:
         """
         Compute prior or derivative works for the subgraph.
 
         Prior works: papers cited by many graph nodes (seminal foundations).
         Derivative works: papers that cite many graph nodes (surveys/recent).
+
+        No minimum frequency threshold — show all relevant papers ranked
+        by frequency × log(citation_count + 1).
         """
         graph_id_list = list(graph_ids)
         chunk_size = 500
         counter: Counter[str] = Counter()
 
         if direction == "prior":
-            # Find papers cited BY graph nodes (graph_node -> target)
-            # We want targets NOT in the graph
             for i in range(0, len(graph_id_list), chunk_size):
                 chunk = graph_id_list[i : i + chunk_size]
                 result = await self.session.execute(
@@ -407,8 +573,6 @@ class SQLAlchemyGraphProvider:
                     if target_id not in graph_ids:
                         counter[target_id] += 1
         else:
-            # Find papers that CITE graph nodes (source -> graph_node)
-            # We want sources NOT in the graph
             for i in range(0, len(graph_id_list), chunk_size):
                 chunk = graph_id_list[i : i + chunk_size]
                 result = await self.session.execute(
@@ -421,8 +585,7 @@ class SQLAlchemyGraphProvider:
         if not counter:
             return []
 
-        # Get top candidates (by frequency first, then we'll re-rank)
-        # Take more than limit so we can rank by frequency * citation_count
+        # Take top candidates by raw frequency, then re-rank
         top_ids = [pid for pid, _ in counter.most_common(limit * 3)]
 
         # Fetch paper metadata
@@ -447,8 +610,6 @@ class SQLAlchemyGraphProvider:
             for s2_id, entry_id in result:
                 library_map[s2_id] = str(entry_id)
 
-        # Build entries, rank by frequency * log(citation_count + 1)
-
         entries: list[AggregateEntry] = []
         for pid in top_ids:
             paper = papers_by_id.get(pid)
@@ -456,8 +617,7 @@ class SQLAlchemyGraphProvider:
                 continue
 
             freq = counter[pid]
-            if freq < 2:
-                continue  # Must be cited/citing at least 2 graph nodes
+            # No minimum frequency threshold — show all, ranked by score
 
             authors = []
             if paper.authors:
@@ -481,7 +641,7 @@ class SQLAlchemyGraphProvider:
                 )
             )
 
-        # Sort by frequency * log(citations+1), descending
+        # Sort by frequency × log(citations+1), descending
         entries.sort(
             key=lambda e: e.frequency * math.log(e.citation_count + 1),
             reverse=True,
@@ -495,11 +655,14 @@ class SQLAlchemyGraphProvider:
 # ──────────────────────────────────────────────────────────
 
 
-def get_graph_provider(session: AsyncSession) -> GraphProvider:
+def get_graph_provider(
+    session: AsyncSession,
+    transport: S2Transport | None = None,
+) -> GraphProvider:
     """
     Factory function for obtaining a GraphProvider instance.
 
-    Currently returns SQLAlchemyGraphProvider. To integrate a graph
-    database, add a config setting and return the appropriate provider.
+    Pass transport to enable live S2 API enrichment for richer
+    similarity graphs (Connected Papers style).
     """
-    return SQLAlchemyGraphProvider(session)
+    return SQLAlchemyGraphProvider(session, transport=transport)

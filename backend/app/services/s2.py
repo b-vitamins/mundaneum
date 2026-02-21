@@ -171,6 +171,41 @@ class S2Transport:
                 return None
         return None
 
+    async def post(
+        self,
+        path: str,
+        json_body: dict | list | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict | None:
+        """POST to a path under the S2 API base, with rate limiting and backoff."""
+        url = f"{S2_API_BASE}/{path.lstrip('/')}"
+        client = await self._get_client()
+
+        for attempt in range(self._max_retries):
+            await self._acquire_token()
+            try:
+                resp = await client.post(url, json=json_body, params=params)
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 429:
+                    wait = 2.0 * (2**attempt)
+                    logger.warning(f"S2 429 rate-limit, retry in {wait:.1f}s ({path})")
+                    await asyncio.sleep(wait)
+                    continue
+                elif resp.status_code == 404:
+                    return None
+                else:
+                    logger.error(f"S2 {resp.status_code}: {resp.text[:200]} ({path})")
+                    return None
+            except httpx.TimeoutException:
+                wait = 2.0 * (2**attempt)
+                logger.warning(f"S2 timeout, retry in {wait:.1f}s ({path})")
+                await asyncio.sleep(wait)
+            except Exception as e:
+                logger.error(f"S2 transport error: {e} ({path})")
+                return None
+        return None
+
     async def search(self, query: str, limit: int = 1) -> list[dict]:
         """Search papers by title via the S2 search API."""
         data = await self.get(

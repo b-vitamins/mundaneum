@@ -104,8 +104,8 @@ async def get_graph(
     Returns nodes (papers) and edges (citation links) for
     interactive graph visualization.
     """
-    provider = get_graph_provider(db)
     orchestrator = get_sync_orchestrator()
+    provider = get_graph_provider(db, transport=orchestrator._transport)
 
     # Auto-trigger S2 sync if needed (idempotent)
     sync_status = await orchestrator.ensure_synced(str(entry_id))
