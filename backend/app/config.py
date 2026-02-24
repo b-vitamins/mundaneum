@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     s2_staleness_days: int = 7
     s2_rate_limit: float = 0.9  # reqs/sec without key (with key: auto 10.0)
 
+    # S2 corpus pipeline (local dataset cache)
+    s2_corpus_path: str = "/data/s2/corpus.duckdb"
+    s2_shards_path: str = "/data/s2/shards"
+    s2_minio_bucket: str = "s2-corpus"
+    s2_qdrant_url: str = "http://localhost:6333"
+    s2_qdrant_api_key: str | None = None
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""

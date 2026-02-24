@@ -19,6 +19,8 @@ bibtexparser = "^1.4.1"
 minio = "^7.2.3"
 httpx = "^0.26.0"
 pylatexenc = "^2.10"
+duckdb = "^1.0.0"
+python-dotenv = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"
