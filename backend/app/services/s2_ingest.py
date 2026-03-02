@@ -109,8 +109,12 @@ def get_download_links(
     return resp.json().get("files", [])
 
 
-def download_shard(url: str, dest: Path) -> bool:
-    """Download a single shard to dest. Returns True if downloaded, False if skipped."""
+def download_shard(url: str, dest: Path, max_retries: int = 3) -> bool:
+    """Download a single shard to dest. Returns True if downloaded, False if skipped.
+
+    Retries on network errors with exponential backoff.
+    Uses atomic writes (.tmp → rename) to prevent corrupt files.
+    """
     if dest.exists() and dest.stat().st_size > 0:
         logger.info("  ✓ Already exists: %s", dest.name)
         return False
@@ -118,37 +122,99 @@ def download_shard(url: str, dest: Path) -> bool:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")
 
-    logger.info("  ↓ Downloading: %s", dest.name)
-    t0 = time.monotonic()
+    for attempt in range(max_retries):
+        # Clean up any stale .tmp from previous failed attempt
+        if tmp.exists():
+            tmp.unlink()
 
-    with httpx.stream(
-        "GET", url, timeout=httpx.Timeout(connect=30, read=300, write=30, pool=30)
-    ) as resp:
-        resp.raise_for_status()
-        total = int(resp.headers.get("content-length", 0))
-        downloaded = 0
+        if attempt > 0:
+            wait = 5.0 * (2 ** (attempt - 1))
+            logger.warning(
+                "  ↻ Retry %d/%d for %s in %.0fs",
+                attempt + 1,
+                max_retries,
+                dest.name,
+                wait,
+            )
+            time.sleep(wait)
 
-        with open(tmp, "wb") as f:
-            for chunk in resp.iter_bytes(chunk_size=8 * 1024 * 1024):  # 8 MB
-                f.write(chunk)
-                downloaded += len(chunk)
-                if total > 0:
-                    pct = downloaded / total * 100
-                    rate = downloaded / (time.monotonic() - t0) / 1024 / 1024
-                    print(f"\r    {pct:.1f}% ({rate:.1f} MB/s)", end="", flush=True)
+        logger.info("  ↓ Downloading: %s", dest.name)
+        t0 = time.monotonic()
 
-    print()  # newline after progress
-    tmp.rename(dest)
-    elapsed = time.monotonic() - t0
-    size_mb = dest.stat().st_size / 1024 / 1024
-    logger.info(
-        "  ✓ %s: %.1f MB in %.1fs (%.1f MB/s)",
-        dest.name,
-        size_mb,
-        elapsed,
-        size_mb / elapsed if elapsed > 0 else 0,
-    )
-    return True
+        try:
+            with httpx.stream(
+                "GET",
+                url,
+                timeout=httpx.Timeout(connect=30, read=600, write=30, pool=30),
+                follow_redirects=True,
+            ) as resp:
+                resp.raise_for_status()
+                total = int(resp.headers.get("content-length", 0))
+                downloaded = 0
+
+                with open(tmp, "wb") as f:
+                    for chunk in resp.iter_bytes(chunk_size=8 * 1024 * 1024):  # 8 MB
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total > 0:
+                            pct = downloaded / total * 100
+                            elapsed_so_far = time.monotonic() - t0
+                            rate = (
+                                downloaded / elapsed_so_far / 1024 / 1024
+                                if elapsed_so_far > 0
+                                else 0
+                            )
+                            print(
+                                f"\r    {pct:.1f}% ({rate:.1f} MB/s)",
+                                end="",
+                                flush=True,
+                            )
+
+            print()  # newline after progress
+
+            # Verify we got the full file
+            if total > 0 and downloaded < total:
+                logger.warning(
+                    "  ⚠ Incomplete: got %d/%d bytes for %s",
+                    downloaded,
+                    total,
+                    dest.name,
+                )
+                continue  # retry
+
+            tmp.rename(dest)
+            elapsed = time.monotonic() - t0
+            size_mb = dest.stat().st_size / 1024 / 1024
+            logger.info(
+                "  ✓ %s: %.1f MB in %.1fs (%.1f MB/s)",
+                dest.name,
+                size_mb,
+                elapsed,
+                size_mb / elapsed if elapsed > 0 else 0,
+            )
+            return True
+
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.HTTPStatusError,
+            OSError,
+        ) as e:
+            print()  # newline after partial progress
+            logger.warning(
+                "  ✗ Failed %s (attempt %d/%d): %s",
+                dest.name,
+                attempt + 1,
+                max_retries,
+                e,
+            )
+            continue
+
+    # All retries exhausted
+    logger.error("  ✗ Gave up on %s after %d attempts", dest.name, max_retries)
+    if tmp.exists():
+        tmp.unlink()
+    return False
 
 
 def download_dataset(
