@@ -109,8 +109,13 @@ def get_download_links(
     return resp.json().get("files", [])
 
 
-def download_shard(url: str, dest: Path, max_retries: int = 3) -> bool:
-    """Download a single shard to dest. Returns True if downloaded, False if skipped.
+def download_shard(url: str, dest: Path, max_retries: int = 3) -> bool | str:
+    """Download a single shard to dest.
+
+    Returns:
+        True     — downloaded successfully
+        False    — skipped (already exists) or permanent failure
+        'expired' — pre-signed URL expired (400), caller should refresh
 
     Retries on network errors with exponential backoff.
     Uses atomic writes (.tmp → rename) to prevent corrupt files.
@@ -148,6 +153,9 @@ def download_shard(url: str, dest: Path, max_retries: int = 3) -> bool:
                 timeout=httpx.Timeout(connect=30, read=600, write=30, pool=30),
                 follow_redirects=True,
             ) as resp:
+                if resp.status_code == 400:
+                    logger.warning("  ⚠ URL expired (400) for %s", dest.name)
+                    return "expired"
                 resp.raise_for_status()
                 total = int(resp.headers.get("content-length", 0))
                 downloaded = 0
@@ -217,19 +225,28 @@ def download_shard(url: str, dest: Path, max_retries: int = 3) -> bool:
     return False
 
 
+# Pre-signed URLs expire after ~1 hour; refresh well before that
+_URL_REFRESH_INTERVAL = 30 * 60  # 30 minutes
+
+
 def download_dataset(
     dataset_name: str,
     shards_dir: Path,
     api_key: str,
     release_id: str | None = None,
 ) -> Path:
-    """Download all shards for a dataset. Returns the dataset directory."""
+    """Download all shards for a dataset. Returns the dataset directory.
+
+    Automatically re-fetches pre-signed S3 URLs when they expire (400)
+    or when they are older than 30 minutes.
+    """
     if not release_id:
         release_id = get_latest_release(api_key)
 
     logger.info("Downloading '%s' from release %s", dataset_name, release_id)
 
     urls = get_download_links(dataset_name, release_id, api_key)
+    urls_fetched_at = time.monotonic()
     if not urls:
         logger.error("No download links for dataset '%s'", dataset_name)
         raise RuntimeError(f"No download links for {dataset_name}")
@@ -238,13 +255,40 @@ def download_dataset(
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
     downloaded = 0
-    for i, url in enumerate(urls):
+    failed = 0
+
+    for i in range(len(urls)):
         shard_name = f"{i:03d}.jsonl.gz"
-        if download_shard(url, dataset_dir / shard_name):
+        dest = dataset_dir / shard_name
+
+        # Proactively refresh URLs before they expire
+        if time.monotonic() - urls_fetched_at > _URL_REFRESH_INTERVAL:
+            logger.info("  🔄 Refreshing download URLs (older than 30m)...")
+            urls = get_download_links(dataset_name, release_id, api_key)
+            urls_fetched_at = time.monotonic()
+
+        result = download_shard(urls[i], dest)
+
+        if result == "expired":
+            # URL expired — get fresh ones and retry this shard
+            logger.info("  🔄 Refreshing download URLs (expired)...")
+            urls = get_download_links(dataset_name, release_id, api_key)
+            urls_fetched_at = time.monotonic()
+            result = download_shard(urls[i], dest)
+
+        if result is True:
             downloaded += 1
+        elif result is False:
+            pass  # skipped (already existed)
+        else:
+            failed += 1
 
     logger.info(
-        "Dataset '%s': %d/%d shards downloaded", dataset_name, downloaded, len(urls)
+        "Dataset '%s': %d downloaded, %d failed, %d total shards",
+        dataset_name,
+        downloaded,
+        failed,
+        len(urls),
     )
 
     # Write metadata
