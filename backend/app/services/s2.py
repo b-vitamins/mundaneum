@@ -327,6 +327,7 @@ class PaperStore(Protocol):
     async def set_entry_s2_id(self, entry_id: str, s2_id: str) -> None: ...
     async def unresolved_entries(self, limit: int) -> list[Entry]: ...
     async def get_entry(self, entry_id: str) -> Entry | None: ...
+    async def commit(self) -> None: ...
 
 
 class SQLAlchemyPaperStore:
@@ -359,7 +360,6 @@ class SQLAlchemyPaperStore:
         if entry:
             entry.s2_id = s2_id
             self._session.add(entry)
-            await self._session.commit()
 
     async def upsert_paper(self, data: dict) -> None:
         stmt = insert(S2Paper).values(data)
@@ -368,7 +368,6 @@ class SQLAlchemyPaperStore:
             set_={k: v for k, v in data.items() if k != "s2_id"},
         )
         await self._session.execute(stmt)
-        await self._session.commit()
 
     async def upsert_papers_batch(self, records: list[dict]) -> None:
         if not records:
@@ -376,7 +375,6 @@ class SQLAlchemyPaperStore:
         stmt = insert(S2Paper).values(records)
         stmt = stmt.on_conflict_do_nothing(index_elements=[S2Paper.s2_id])
         await self._session.execute(stmt)
-        await self._session.commit()
 
     async def upsert_edges(self, edges: list[dict]) -> None:
         if not edges:
@@ -391,7 +389,6 @@ class SQLAlchemyPaperStore:
             },
         )
         await self._session.execute(stmt)
-        await self._session.commit()
 
     async def unresolved_entries(self, limit: int) -> list[Entry]:
         result = await self._session.execute(
@@ -401,6 +398,9 @@ class SQLAlchemyPaperStore:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def commit(self) -> None:
+        await self._session.commit()
 
 
 # ──────────────────────────────────────────────────────────
@@ -462,6 +462,7 @@ class SyncOrchestrator:
                     logger.warning(f"Could not resolve S2 ID for '{entry.title[:40]}'")
                     return SyncStatus.NO_MATCH
                 await store.set_entry_s2_id(entry_id, s2_id)
+                await store.commit()
 
             # Check staleness
             if not force and not await store.is_stale(
@@ -584,6 +585,7 @@ class SyncOrchestrator:
 
                 await store.upsert_papers_batch(papers)
                 await store.upsert_edges(edges)
+                await store.commit()
 
                 logger.info(
                     f"Synced {s2_id} from DuckDB: "
@@ -626,6 +628,7 @@ class SyncOrchestrator:
 
         await store.upsert_papers_batch(papers)
         await store.upsert_edges(edges)
+        await store.commit()
 
         logger.info(
             f"Synced {s2_id}: {len(cit_result)} citations, {len(ref_result)} references"
@@ -751,6 +754,63 @@ def _paper_to_record(paper: S2PaperSchema) -> dict:
     }
 
 
+def _default_resolvers() -> list[Resolver]:
+    """Return the default resolver chain in priority order."""
+    return [
+        DOIResolver(),
+        ArXivResolver(),
+        TitleResolver(),
+    ]
+
+
+async def sync_entry(entry_id: str, force: bool = False) -> SyncStatus:
+    """Public entry-point for syncing one library entry against S2."""
+    return await get_sync_orchestrator().ensure_synced(entry_id, force=force)
+
+
+async def background_sync_entry(entry_id: str, force: bool = False) -> None:
+    """Background-safe sync wrapper with error logging."""
+    try:
+        await sync_entry(entry_id, force=force)
+    except Exception as e:
+        logger.warning("Background sync failed for %s: %s", entry_id, e)
+
+
+async def resolve_entry_s2_id(
+    entry: Entry,
+    session: AsyncSession,
+    transport: S2Transport | None = None,
+    resolvers: list[Resolver] | None = None,
+) -> str | None:
+    """Resolve and persist an S2 paper ID for an entry using the current policy."""
+    if entry.s2_id:
+        return entry.s2_id
+
+    orchestrator = SyncOrchestrator(
+        transport=transport
+        or S2Transport(
+            api_key=settings.s2_api_key,
+            rate_limit=settings.s2_rate_limit,
+        ),
+        resolvers=resolvers or _default_resolvers(),
+    )
+    s2_id = await orchestrator._resolve(entry)
+    if not s2_id:
+        return None
+
+    store = SQLAlchemyPaperStore(session)
+    await store.set_entry_s2_id(str(entry.id), s2_id)
+    await store.commit()
+    return s2_id
+
+
+async def upsert_s2_paper(session: AsyncSession, paper: S2PaperSchema) -> None:
+    """Persist one normalized S2 paper record."""
+    store = SQLAlchemyPaperStore(session)
+    await store.upsert_paper(_paper_to_record(paper))
+    await store.commit()
+
+
 # ──────────────────────────────────────────────────────────
 # Factory — wires everything together
 # ──────────────────────────────────────────────────────────
@@ -771,13 +831,8 @@ def get_sync_orchestrator() -> SyncOrchestrator:
             api_key=settings.s2_api_key,
             rate_limit=settings.s2_rate_limit,
         )
-        resolvers: list[Resolver] = [
-            DOIResolver(),
-            ArXivResolver(),
-            TitleResolver(),
-        ]
         _orchestrator = SyncOrchestrator(
             transport=transport,
-            resolvers=resolvers,
+            resolvers=_default_resolvers(),
         )
     return _orchestrator

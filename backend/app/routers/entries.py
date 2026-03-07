@@ -2,12 +2,11 @@
 Entries router for Mundaneum API.
 """
 
-import asyncio
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -18,7 +17,7 @@ from app.database import get_db
 from app.exceptions import NotFoundError
 from app.logging import get_logger
 from app.models import Entry, EntryAuthor
-from app.services.s2 import get_sync_orchestrator
+from app.services.s2 import background_sync_entry, sync_entry
 from app.services.s2_corpus import get_data_source
 
 logger = get_logger(__name__)
@@ -142,6 +141,7 @@ async def list_entries(
 @router.get("/{entry_id}", response_model=EntryDetailResponse)
 async def get_entry(
     entry_id: UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single entry by ID."""
@@ -170,8 +170,7 @@ async def get_entry(
     abstract = optional.get("abstract")
 
     # Trigger S2 sync (idempotent, non-blocking background fire)
-    orchestrator = get_sync_orchestrator()
-    asyncio.ensure_future(orchestrator.ensure_synced(str(entry_id)))
+    background_tasks.add_task(background_sync_entry, str(entry_id))
 
     return EntryDetailResponse(
         id=str(entry.id),
@@ -391,8 +390,7 @@ async def get_entry_s2(
             )
 
     # No s2_id or not in local corpus — fall back to sync orchestrator
-    orchestrator = get_sync_orchestrator()
-    status = await orchestrator.ensure_synced(str(entry_id))
+    status = await sync_entry(str(entry_id))
 
     if status == SyncStatus.SYNCING:
         return S2MetaResponse(sync_status="syncing")

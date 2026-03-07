@@ -374,7 +374,7 @@ _latex_converter = LatexNodes2Text()
 
 
 def clean_latex_string(text: str) -> str:
-    """
+    r"""
     Clean LaTeX encoded strings to proper Unicode.
 
     Handles common LaTeX patterns like:

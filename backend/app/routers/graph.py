@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.logging import get_logger
 from app.services.graph import get_graph_provider
-from app.services.s2 import get_sync_orchestrator
+from app.services.s2 import background_sync_entry
 from app.services.s2_corpus import get_local_source
 
 logger = get_logger(__name__)
@@ -85,20 +85,6 @@ class SimilarityEdgeResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────────────────
-# Background sync helper
-# ──────────────────────────────────────────────────────────
-
-
-async def _background_sync(entry_id: str) -> None:
-    """Fire-and-forget S2 sync. Ensures future graph requests benefit."""
-    try:
-        orchestrator = get_sync_orchestrator()
-        await orchestrator.ensure_synced(entry_id)
-    except Exception as e:
-        logger.warning("Background sync failed for %s: %s", entry_id, e)
-
-
-# ──────────────────────────────────────────────────────────
 # Endpoint
 # ──────────────────────────────────────────────────────────
 
@@ -106,11 +92,11 @@ async def _background_sync(entry_id: str) -> None:
 @router.get("/{entry_id}", response_model=GraphResponse)
 async def get_graph(
     entry_id: UUID,
+    background_tasks: BackgroundTasks,
     depth: int = Query(default=1, ge=1, le=2, description="Hops to expand (1 or 2)"),
     max_nodes: int = Query(
         default=80, ge=10, le=200, description="Max nodes to return"
     ),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -124,7 +110,7 @@ async def get_graph(
     entry_id_str = str(entry_id)
 
     # Fire background sync (non-blocking — enriches data for next request)
-    background_tasks.add_task(_background_sync, entry_id_str)
+    background_tasks.add_task(background_sync_entry, entry_id_str)
 
     # Resolve entry to S2 ID from Postgres
     s2_id = await provider.resolve_entry_s2_id(entry_id_str)

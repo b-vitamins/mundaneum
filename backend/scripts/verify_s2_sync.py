@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.database import async_session
 from app.models import Entry, S2Citation, S2Paper
-from app.services.s2 import S2Service
+from app.services.s2 import sync_entry
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,9 +36,9 @@ async def main():
         entry_id = str(entry.id)
 
     # 2. Trigger Sync
-    service = S2Service()
-    logger.info("Triggering sync_paper...")
-    await service.sync_paper(entry_id)
+    logger.info("Triggering sync_entry...")
+    status = await sync_entry(entry_id)
+    logger.info("Sync status: %s", status.value)
 
     # 3. Verify Data
     async with async_session() as session:
