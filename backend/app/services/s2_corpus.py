@@ -1,10 +1,10 @@
 """
-S2 corpus module — three S2DataSource implementations + ChainedSource combinator.
+S2 data sources — composable, protocol-based corpus access.
 
-LocalCorpus   — DuckDB over the full S2 Academic Graph dump (~63 GB)
-PostgresCache — wraps existing SQLAlchemy paper store (hot data)
-LiveAPI       — wraps existing S2Transport (rate-limited fallback)
-ChainedSource — tries each in order; first non-None wins
+Sources (chained in priority order):
+  LocalCorpus  — DuckDB bulk corpus (233M papers, 5B citations)
+  LiveAPI      — wraps existing S2Transport (rate-limited fallback)
+  ChainedSource — tries each in order; first non-None wins
 
 Design (Sussman):
   - Each source is independently useful.
@@ -14,15 +14,15 @@ Design (Sussman):
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.services.s2_protocol import EdgeRecord, PaperRecord, S2DataSource
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from app.services.s2 import S2Transport
 
 logger = logging.getLogger(__name__)
@@ -43,19 +43,30 @@ class LocalCorpus:
 
     def __init__(self, db_path: str | Path):
         self._db_path = Path(db_path)
-        self._conn = None
+        self._local = threading.local()
 
     def _get_conn(self):
-        """Lazy connection — only import duckdb when actually needed."""
-        if self._conn is None:
-            if not self._db_path.exists():
-                logger.info("LocalCorpus: DuckDB not found at %s", self._db_path)
-                return None
-            import duckdb
+        """Return a per-thread DuckDB connection (thread-safe).
 
-            self._conn = duckdb.connect(str(self._db_path), read_only=True)
-            logger.info("LocalCorpus: connected to %s", self._db_path)
-        return self._conn
+        Each thread in the asyncio thread pool gets its own connection.
+        DuckDB supports concurrent read-only connections to the same file.
+        """
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            return conn
+        if not self._db_path.exists():
+            logger.info("LocalCorpus: DuckDB not found at %s", self._db_path)
+            return None
+        import duckdb
+
+        conn = duckdb.connect(str(self._db_path), read_only=True)
+        self._local.conn = conn
+        logger.info(
+            "LocalCorpus: connected to %s (thread %s)",
+            self._db_path,
+            threading.current_thread().name,
+        )
+        return conn
 
     def _sha_to_corpus_id(self, s2_id: str) -> int | None:
         """Convert a 40-char SHA paper ID to an integer corpus ID."""
@@ -77,13 +88,56 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            row = conn.execute(
-                "SELECT sha FROM paper_ids WHERE corpusid = ? AND is_primary = true LIMIT 1",
-                [corpus_id],
-            ).fetchone()
+            # Use reverse-sorted table for fast zone-map lookups
+            try:
+                row = conn.execute(
+                    "SELECT sha FROM paper_ids_by_corpus WHERE corpusid = ? AND is_primary = true LIMIT 1",
+                    [corpus_id],
+                ).fetchone()
+            except Exception:
+                row = conn.execute(
+                    "SELECT sha FROM paper_ids WHERE corpusid = ? AND is_primary = true LIMIT 1",
+                    [corpus_id],
+                ).fetchone()
             return row[0] if row else None
         except Exception:
             return None
+
+    def _batch_corpus_id_to_sha(
+        self, corpus_ids: list[int], chunk_size: int = 500
+    ) -> dict[int, str]:
+        """Batch convert corpus IDs to SHA paper IDs in O(1) DuckDB queries.
+
+        Returns a dict mapping corpus_id → sha for all IDs that were found.
+        Much faster than calling _corpus_id_to_sha in a loop.
+        """
+        if not corpus_ids:
+            return {}
+        conn = self._get_conn()
+        if conn is None:
+            return {}
+        result: dict[int, str] = {}
+        try:
+            for i in range(0, len(corpus_ids), chunk_size):
+                chunk = corpus_ids[i : i + chunk_size]
+                placeholders = ",".join("?" for _ in chunk)
+                try:
+                    rows = conn.execute(
+                        f"SELECT corpusid, sha FROM paper_ids_by_corpus "
+                        f"WHERE corpusid IN ({placeholders}) AND is_primary = true",
+                        chunk,
+                    ).fetchall()
+                except Exception:
+                    rows = conn.execute(
+                        f"SELECT corpusid, sha FROM paper_ids "
+                        f"WHERE corpusid IN ({placeholders}) AND is_primary = true",
+                        chunk,
+                    ).fetchall()
+                for cid, sha in rows:
+                    result[cid] = sha
+        except Exception as e:
+            logger.warning("_batch_corpus_id_to_sha: %s", e)
+        return result
 
     def _row_to_paper(self, row: tuple, corpus_id: int) -> PaperRecord:
         """Convert a DuckDB row to PaperRecord."""
@@ -103,12 +157,18 @@ class LocalCorpus:
         )
 
     async def get_paper(self, s2_id: str) -> PaperRecord | None:
+        return await asyncio.to_thread(self._sync_get_paper, s2_id)
+
+    def _sync_get_paper(self, s2_id: str) -> PaperRecord | None:
         corpus_id = self._sha_to_corpus_id(s2_id)
         if corpus_id is None:
             return None
-        return await self.get_paper_by_corpus_id(corpus_id)
+        return self._sync_get_paper_by_corpus_id(corpus_id)
 
     async def get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
+        return await asyncio.to_thread(self._sync_get_paper_by_corpus_id, corpus_id)
+
+    def _sync_get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
         conn = self._get_conn()
         if conn is None:
             return None
@@ -156,7 +216,17 @@ class LocalCorpus:
             logger.warning("LocalCorpus.get_paper_by_corpus_id(%d): %s", corpus_id, e)
             return None
 
-    async def get_references(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_references(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
+        return await asyncio.to_thread(self._sync_get_references, s2_id, limit)
+
+    def _sync_get_references(
+        self, s2_id: str, limit: int | None = None
+    ) -> list[EdgeRecord] | None:
         corpus_id = self._sha_to_corpus_id(s2_id)
         if corpus_id is None:
             return None
@@ -164,26 +234,44 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            rows = conn.execute(
-                """SELECT citedcorpusid, isinfluential
-                   FROM citations WHERE citingcorpusid = ?""",
-                [corpus_id],
-            ).fetchall()
+            query = """SELECT citedcorpusid, isinfluential
+                       FROM citations WHERE citingcorpusid = ?"""
+            # Prioritize influential citations when limiting
+            if limit is not None:
+                query += " ORDER BY isinfluential DESC"
+                query += f" LIMIT {int(limit)}"
+            rows = conn.execute(query, [corpus_id]).fetchall()
+
+            # Batch reverse-lookup: corpus_id → sha
+            cited_ids = [r[0] for r in rows if r[0] is not None]
+            sha_map = self._batch_corpus_id_to_sha(cited_ids)
+
             return [
                 EdgeRecord(
                     citing_corpus_id=corpus_id,
                     cited_corpus_id=r[0],
                     citing_s2_id=s2_id,
-                    cited_s2_id=self._corpus_id_to_sha(r[0]),
+                    cited_s2_id=sha_map.get(r[0]),
                     is_influential=bool(r[1]),
                 )
                 for r in rows
+                if r[0] is not None and sha_map.get(r[0]) is not None
             ]
         except Exception as e:
             logger.warning("LocalCorpus.get_references(%s): %s", s2_id, e)
             return None
 
-    async def get_citations(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_citations(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
+        return await asyncio.to_thread(self._sync_get_citations, s2_id, limit)
+
+    def _sync_get_citations(
+        self, s2_id: str, limit: int | None = None
+    ) -> list[EdgeRecord] | None:
         corpus_id = self._sha_to_corpus_id(s2_id)
         if corpus_id is None:
             return None
@@ -191,26 +279,46 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            rows = conn.execute(
-                """SELECT citingcorpusid, isinfluential
-                   FROM citations WHERE citedcorpusid = ?""",
-                [corpus_id],
-            ).fetchall()
+            # Use reverse-sorted table for fast zone-map lookups.
+            # Falls back to original citations table if not yet optimized.
+            try:
+                query = """SELECT citingcorpusid, isinfluential
+                           FROM citations_by_cited WHERE citedcorpusid = ?"""
+                if limit is not None:
+                    query += " ORDER BY isinfluential DESC"
+                    query += f" LIMIT {int(limit)}"
+                rows = conn.execute(query, [corpus_id]).fetchall()
+            except Exception:
+                query = """SELECT citingcorpusid, isinfluential
+                           FROM citations WHERE citedcorpusid = ?"""
+                if limit is not None:
+                    query += " ORDER BY isinfluential DESC"
+                    query += f" LIMIT {int(limit)}"
+                rows = conn.execute(query, [corpus_id]).fetchall()
+
+            # Batch reverse-lookup: corpus_id → sha
+            citing_ids = [r[0] for r in rows if r[0] is not None]
+            sha_map = self._batch_corpus_id_to_sha(citing_ids)
+
             return [
                 EdgeRecord(
                     citing_corpus_id=r[0],
                     cited_corpus_id=corpus_id,
-                    citing_s2_id=self._corpus_id_to_sha(r[0]),
+                    citing_s2_id=sha_map.get(r[0]),
                     cited_s2_id=s2_id,
                     is_influential=bool(r[1]),
                 )
                 for r in rows
+                if r[0] is not None and sha_map.get(r[0]) is not None
             ]
         except Exception as e:
             logger.warning("LocalCorpus.get_citations(%s): %s", s2_id, e)
             return None
 
     async def resolve_id(self, id_type: str, identifier: str) -> str | None:
+        return await asyncio.to_thread(self._sync_resolve_id, id_type, identifier)
+
+    def _sync_resolve_id(self, id_type: str, identifier: str) -> str | None:
         conn = self._get_conn()
         if conn is None:
             return None
@@ -231,6 +339,9 @@ class LocalCorpus:
         return None
 
     async def get_reference_ids(self, s2_id: str) -> set[str] | None:
+        return await asyncio.to_thread(self._sync_get_reference_ids, s2_id)
+
+    def _sync_get_reference_ids(self, s2_id: str) -> set[str] | None:
         """Optimized: return just cited SHA IDs without full EdgeRecord overhead."""
         corpus_id = self._sha_to_corpus_id(s2_id)
         if corpus_id is None:
@@ -250,147 +361,6 @@ class LocalCorpus:
         except Exception as e:
             logger.warning("LocalCorpus.get_reference_ids(%s): %s", s2_id, e)
             return None
-
-
-# ──────────────────────────────────────────────────────────
-# PostgresCache — wraps existing S2Paper/S2Citation tables
-# ──────────────────────────────────────────────────────────
-
-
-class PostgresCache:
-    """S2DataSource backed by existing Folio PostgreSQL tables.
-
-    Returns data only for papers that have been previously synced
-    (library papers + their 1-hop neighborhoods).
-    """
-
-    def __init__(self, session: AsyncSession):
-        self._session = session
-
-    async def get_paper(self, s2_id: str) -> PaperRecord | None:
-        from sqlalchemy import select
-
-        from app.models import S2Paper
-
-        result = await self._session.execute(
-            select(S2Paper).where(S2Paper.s2_id == s2_id)
-        )
-        paper = result.scalar_one_or_none()
-        if not paper:
-            return None
-
-        tldr_text = None
-        if paper.tldr and isinstance(paper.tldr, dict):
-            tldr_text = paper.tldr.get("text")
-
-        oa_url = None
-        if paper.open_access_pdf and isinstance(paper.open_access_pdf, dict):
-            oa_url = paper.open_access_pdf.get("url")
-
-        return PaperRecord(
-            s2_id=paper.s2_id,
-            title=paper.title or "",
-            year=paper.year,
-            venue=paper.venue,
-            authors=paper.authors or [],
-            abstract=paper.abstract,
-            tldr=tldr_text,
-            citation_count=paper.citation_count or 0,
-            reference_count=paper.reference_count or 0,
-            influential_citation_count=paper.influential_citation_count or 0,
-            is_open_access=paper.is_open_access or False,
-            open_access_pdf_url=oa_url,
-            fields_of_study=paper.fields_of_study or [],
-            publication_types=paper.publication_types or [],
-            external_ids=paper.external_ids or {},
-        )
-
-    async def get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
-        # Postgres store doesn't index by corpus_id
-        return None
-
-    async def get_references(self, s2_id: str) -> list[EdgeRecord] | None:
-        from sqlalchemy import select
-
-        from app.models import S2Citation
-
-        result = await self._session.execute(
-            select(S2Citation).where(S2Citation.source_id == s2_id)
-        )
-        rows = result.scalars().all()
-        if not rows:
-            return None  # None = "I don't know" (no data synced for this paper)
-
-        return [
-            EdgeRecord(
-                citing_s2_id=s2_id,
-                cited_s2_id=r.target_id,
-                is_influential=r.is_influential or False,
-            )
-            for r in rows
-        ]
-
-    async def get_citations(self, s2_id: str) -> list[EdgeRecord] | None:
-        from sqlalchemy import select
-
-        from app.models import S2Citation
-
-        result = await self._session.execute(
-            select(S2Citation).where(S2Citation.target_id == s2_id)
-        )
-        rows = result.scalars().all()
-        if not rows:
-            return None
-
-        return [
-            EdgeRecord(
-                citing_s2_id=r.source_id,
-                cited_s2_id=s2_id,
-                is_influential=r.is_influential or False,
-            )
-            for r in rows
-        ]
-
-    async def resolve_id(self, id_type: str, identifier: str) -> str | None:
-        # Postgres doesn't index external IDs for lookup
-        return None
-
-    async def search(self, query: str, limit: int = 10) -> list[PaperRecord] | None:
-        return None
-
-    async def get_reference_ids(self, s2_id: str) -> set[str] | None:
-        refs = await self.get_references(s2_id)
-        if refs is None:
-            return None
-        return {e.cited_s2_id for e in refs if e.cited_s2_id}
-
-    # ── Write-through support ──
-
-    async def store_paper(self, record: PaperRecord) -> None:
-        """Cache a paper record into PostgreSQL (write-through)."""
-        if not record.s2_id:
-            return
-        from app.services.s2 import SQLAlchemyPaperStore
-
-        store = SQLAlchemyPaperStore(self._session)
-        await store.upsert_paper(
-            {
-                "s2_id": record.s2_id,
-                "title": record.title,
-                "year": record.year,
-                "venue": record.venue,
-                "authors": record.authors,
-                "abstract": record.abstract,
-                "tldr": {"text": record.tldr} if record.tldr else None,
-                "citation_count": record.citation_count,
-                "reference_count": record.reference_count,
-                "influential_citation_count": record.influential_citation_count,
-                "is_open_access": record.is_open_access,
-                "fields_of_study": record.fields_of_study,
-                "publication_types": record.publication_types,
-                "external_ids": record.external_ids,
-            }
-        )
 
 
 # ──────────────────────────────────────────────────────────
@@ -431,7 +401,12 @@ class LiveAPI:
             return None
         return _api_dict_to_paper(data)
 
-    async def get_references(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_references(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
         data = await self._transport.get(
             f"paper/{s2_id}/references",
             params={"fields": "citedPaper.paperId,isInfluential", "limit": "500"},
@@ -452,7 +427,12 @@ class LiveAPI:
                 )
         return edges
 
-    async def get_citations(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_citations(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
         data = await self._transport.get(
             f"paper/{s2_id}/citations",
             params={"fields": "citingPaper.paperId,isInfluential", "limit": "500"},
@@ -557,21 +537,13 @@ class ChainedSource:
     def __init__(
         self,
         sources: list[S2DataSource],
-        cache: PostgresCache | None = None,
     ):
         self._sources = sources
-        self._cache = cache
 
     async def get_paper(self, s2_id: str) -> PaperRecord | None:
         for source in self._sources:
             result = await source.get_paper(s2_id)
             if result is not None:
-                # Write-through: cache if this came from a non-cache source
-                if self._cache and source is not self._cache:
-                    try:
-                        await self._cache.store_paper(result)
-                    except Exception as e:
-                        logger.debug("ChainedSource write-through failed: %s", e)
                 return result
         return None
 
@@ -582,16 +554,26 @@ class ChainedSource:
                 return result
         return None
 
-    async def get_references(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_references(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
         for source in self._sources:
-            result = await source.get_references(s2_id)
+            result = await source.get_references(s2_id, limit=limit)
             if result is not None:
                 return result
         return None
 
-    async def get_citations(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_citations(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
         for source in self._sources:
-            result = await source.get_citations(s2_id)
+            result = await source.get_citations(s2_id, limit=limit)
             if result is not None:
                 return result
         return None
@@ -616,3 +598,72 @@ class ChainedSource:
             if result is not None:
                 return result
         return None
+
+
+# ──────────────────────────────────────────────────────────
+# Factory — singleton data source
+# ──────────────────────────────────────────────────────────
+
+_data_source: ChainedSource | None = None
+_local_source: LocalCorpus | None = None
+
+
+def get_local_source() -> LocalCorpus | None:
+    """Return the LocalCorpus singleton (DuckDB only, no API fallback).
+
+    Used by graph construction where we want instant results from DuckDB
+    without ever blocking on LiveAPI calls.
+    """
+    global _local_source
+    if _local_source is not None:
+        return _local_source
+
+    from app.config import settings
+
+    corpus_path = Path(settings.s2_corpus_path)
+    if corpus_path.exists():
+        try:
+            _local_source = LocalCorpus(corpus_path)
+            return _local_source
+        except Exception as e:
+            logger.warning("LocalCorpus failed to load: %s", e)
+            return None
+    return None
+
+
+def get_data_source() -> ChainedSource:
+    """Return the singleton ChainedSource.
+
+    Chain: LocalCorpus (DuckDB, instant) → LiveAPI (S2 Transport, fallback).
+    Created lazily on first call.
+    """
+    global _data_source
+    if _data_source is not None:
+        return _data_source
+
+    from app.config import settings
+    from app.services.s2 import S2Transport
+
+    sources: list[S2DataSource] = []
+
+    # 1. Local corpus (DuckDB) — try first if the file exists
+    corpus_path = Path(settings.s2_corpus_path)
+    if corpus_path.exists():
+        try:
+            corpus = LocalCorpus(corpus_path)
+            sources.append(corpus)
+            logger.info("S2 data source: LocalCorpus loaded (%s)", corpus_path)
+        except Exception as e:
+            logger.warning("S2 data source: LocalCorpus failed to load: %s", e)
+    else:
+        logger.info(
+            "S2 data source: DuckDB not found at %s, using API only", corpus_path
+        )
+
+    # 2. Live API fallback
+    transport = S2Transport(api_key=settings.s2_api_key)
+    sources.append(LiveAPI(transport))
+    logger.info("S2 data source: LiveAPI registered (fallback)")
+
+    _data_source = ChainedSource(sources)
+    return _data_source

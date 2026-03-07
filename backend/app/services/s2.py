@@ -34,6 +34,7 @@ from app.database import async_session
 from app.models import Entry, S2Citation, S2Paper
 from app.schemas.s2 import S2GraphResponse
 from app.schemas.s2 import S2Paper as S2PaperSchema
+from app.services.s2_corpus import get_data_source
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +502,27 @@ class SyncOrchestrator:
         return resolved
 
     async def _resolve(self, entry: Entry) -> str | None:
-        """Try each resolver in order. First hit wins."""
+        """Try DuckDB first for instant resolution, then API resolvers."""
+        # 1. Try local corpus first (sub-ms) for DOI and ArXiv
+        source = get_data_source()
+        if source:
+            doi = _extract_id(entry, "doi")
+            if doi:
+                s2_id = await source.resolve_id("DOI", doi)
+                if s2_id:
+                    logger.info(f"Resolved '{entry.title[:40]}' via DuckDB DOI:{doi}")
+                    return s2_id
+
+            arxiv_id = _extract_id(entry, "arxiv", "eprint")
+            if arxiv_id:
+                s2_id = await source.resolve_id("ArXiv", arxiv_id)
+                if s2_id:
+                    logger.info(
+                        f"Resolved '{entry.title[:40]}' via DuckDB ArXiv:{arxiv_id}"
+                    )
+                    return s2_id
+
+        # 2. Fall through to API resolvers
         for resolver in self._resolvers:
             try:
                 s2_id = await resolver.resolve(entry, self._transport)
@@ -515,8 +536,62 @@ class SyncOrchestrator:
         return None
 
     async def _sync_paper(self, s2_id: str, store: PaperStore) -> SyncStatus:
-        """Fetch paper metadata and edges from S2 API."""
-        # 1. Fetch main paper
+        """Sync paper metadata and edges — try DuckDB first, then API."""
+        # 1. Try DuckDB for paper metadata (instant)
+        source = get_data_source()
+        if source:
+            record = await source.get_paper(s2_id)
+            if record:
+                paper_record = {
+                    "s2_id": record.s2_id or s2_id,
+                    "title": record.title,
+                    "year": record.year,
+                    "venue": record.venue,
+                    "authors": record.authors,
+                    "abstract": record.abstract,
+                    "tldr": {"text": record.tldr} if record.tldr else None,
+                    "citation_count": record.citation_count,
+                    "reference_count": record.reference_count,
+                    "influential_citation_count": record.influential_citation_count,
+                    "is_open_access": record.is_open_access,
+                }
+                await store.upsert_paper(paper_record)
+
+                # Fetch edges from DuckDB too
+                cit_edges = await source.get_citations(s2_id) or []
+                ref_edges = await source.get_references(s2_id) or []
+
+                papers: list[dict] = []
+                edges: list[dict] = []
+                for e in cit_edges:
+                    papers.append({"s2_id": e.citing_s2_id or "", "title": ""})
+                    edges.append(
+                        {
+                            "source_id": e.citing_s2_id or "",
+                            "target_id": s2_id,
+                            "is_influential": e.is_influential,
+                        }
+                    )
+                for e in ref_edges:
+                    papers.append({"s2_id": e.cited_s2_id or "", "title": ""})
+                    edges.append(
+                        {
+                            "source_id": s2_id,
+                            "target_id": e.cited_s2_id or "",
+                            "is_influential": e.is_influential,
+                        }
+                    )
+
+                await store.upsert_papers_batch(papers)
+                await store.upsert_edges(edges)
+
+                logger.info(
+                    f"Synced {s2_id} from DuckDB: "
+                    f"{len(cit_edges)} citations, {len(ref_edges)} references"
+                )
+                return SyncStatus.SYNCED
+
+        # 2. Fall through to API
         fields = ",".join(FULL_PAPER_FIELDS)
         data = await self._transport.get(f"paper/{s2_id}", params={"fields": fields})
         if not data:
@@ -532,13 +607,13 @@ class SyncOrchestrator:
         paper_record = _paper_to_record(paper)
         await store.upsert_paper(paper_record)
 
-        # 2. Fetch edges (citations + references) in parallel
+        # 3. Fetch edges (citations + references) in parallel
         max_edges = settings.s2_max_edges
         cit_task = self._fetch_edges(s2_id, "citations", max_edges)
         ref_task = self._fetch_edges(s2_id, "references", max_edges)
         cit_result, ref_result = await asyncio.gather(cit_task, ref_task)
 
-        # 3. Store edges
+        # 4. Store edges
         papers: list[dict] = []
         edges: list[dict] = []
 

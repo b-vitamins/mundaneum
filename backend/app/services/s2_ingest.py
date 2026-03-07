@@ -330,8 +330,8 @@ CREATE TABLE IF NOT EXISTS papers (
 
 -- Citations (2.4B rows)
 CREATE TABLE IF NOT EXISTS citations (
-    citingcorpusid INTEGER NOT NULL,
-    citedcorpusid  INTEGER NOT NULL,
+    citingcorpusid INTEGER,
+    citedcorpusid  INTEGER,
     isinfluential  BOOLEAN DEFAULT FALSE
 );
 
@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS abstracts (
 
 -- TLDRs (58M rows)
 CREATE TABLE IF NOT EXISTS tldrs (
-    corpusid INTEGER PRIMARY KEY,
+    corpusid INTEGER,
     text     VARCHAR
 );
 
@@ -393,16 +393,29 @@ CREATE TABLE IF NOT EXISTS _meta (
 );
 """
 
-_CREATE_INDEXES_SQL = """
-CREATE INDEX IF NOT EXISTS idx_citing ON citations(citingcorpusid);
-CREATE INDEX IF NOT EXISTS idx_cited  ON citations(citedcorpusid);
-CREATE INDEX IF NOT EXISTS idx_sha ON paper_ids(sha);
-CREATE INDEX IF NOT EXISTS idx_pid_corpus ON paper_ids(corpusid);
-CREATE INDEX IF NOT EXISTS idx_extid_lookup ON paper_external_ids(source, id);
-CREATE INDEX IF NOT EXISTS idx_extid_corpus ON paper_external_ids(corpusid);
-CREATE INDEX IF NOT EXISTS idx_pa_corpus ON paper_authors(corpusid);
-CREATE INDEX IF NOT EXISTS idx_pa_author ON paper_authors(authorid);
-"""
+# No ART indexes — DuckDB ART index creation is in-memory only and cannot
+# spill to disk.  On tables with >100M rows this exceeds 64GB RAM.
+#
+# Instead, we sort tables by their primary lookup key.  DuckDB stores
+# min/max zone-map stats per row group (~120K rows).  On sorted data,
+# point queries check these stats and skip 99.99% of row groups —
+# giving index-equivalent speed with zero extra memory.
+#
+# Tables needing lookups on two keys get a reverse-sorted copy.
+
+# (table_name, sort_columns, is_reverse_copy, source_table)
+_SORT_OPTIMIZATIONS: list[tuple[str, str, bool, str | None]] = [
+    # Citations: sorted both ways for reference + citation lookups
+    ("citations", "citingcorpusid", False, None),
+    ("citations_by_cited", "citedcorpusid", True, "citations"),
+    # Paper IDs: sorted by sha (primary lookup), reverse by corpusid
+    ("paper_ids", "sha", False, None),
+    ("paper_ids_by_corpus", "corpusid", True, "paper_ids"),
+    # Paper authors: sorted by corpusid (primary lookup)
+    ("paper_authors", "corpusid, position", False, None),
+    # Paper external IDs: sorted by (source, id) for resolve_id
+    ("paper_external_ids", "source, id", False, None),
+]
 
 
 def _find_shards(shards_dir: Path, dataset_name: str) -> list[Path]:
@@ -421,17 +434,103 @@ def _find_shards(shards_dir: Path, dataset_name: str) -> list[Path]:
     return []
 
 
+def _read_json_clause(shard_path: str, columns: dict[str, str]) -> str:
+    """Build a read_json SQL clause for a single shard file."""
+    col_spec = ", ".join(f"{k}: '{v}'" for k, v in columns.items())
+    return (
+        f"read_json('{shard_path}', format='newline_delimited', "
+        f"ignore_errors=true, columns={{{col_spec}}})"
+    )
+
+
+# Per-dataset column schemas for read_json
+_DATASET_SCHEMAS: dict[str, dict[str, str]] = {
+    "papers": {
+        "corpusid": "INTEGER",
+        "title": "VARCHAR",
+        "year": "SMALLINT",
+        "venue": "VARCHAR",
+        "citationcount": "INTEGER",
+        "referencecount": "INTEGER",
+        "influentialcitationcount": "INTEGER",
+        "isopenaccess": "BOOLEAN",
+        "publicationdate": "VARCHAR",
+        "publicationvenueid": "VARCHAR",
+    },
+    "citations": {
+        "citingcorpusid": "INTEGER",
+        "citedcorpusid": "INTEGER",
+        "isinfluential": "BOOLEAN",
+    },
+    "authors": {
+        "authorid": "VARCHAR",
+        "name": "VARCHAR",
+        "papercount": "INTEGER",
+        "citationcount": "INTEGER",
+        "hindex": "INTEGER",
+    },
+    "abstracts": {"corpusid": "INTEGER", "abstract": "VARCHAR"},
+    "tldrs": {"corpusid": "INTEGER", "text": "VARCHAR"},
+    "paper-ids": {"sha": "VARCHAR", "corpusid": "INTEGER", '"primary"': "BOOLEAN"},
+    "publication-venues": {
+        "id": "VARCHAR",
+        "name": "VARCHAR",
+        "type": "VARCHAR",
+        "issn": "VARCHAR",
+    },
+}
+
+# SQL templates: {src} will be replaced with the read_json clause for each shard
+_INSERT_TEMPLATES: dict[str, list[str]] = {
+    "papers": [
+        """INSERT INTO papers
+           SELECT corpusid, title, year, venue, citationcount, referencecount,
+                  influentialcitationcount, isopenaccess, publicationdate, publicationvenueid
+           FROM {src}""",
+    ],
+    "citations": [
+        """INSERT INTO citations SELECT citingcorpusid, citedcorpusid, isinfluential
+           FROM {src} WHERE citingcorpusid IS NOT NULL AND citedcorpusid IS NOT NULL""",
+    ],
+    "authors": [
+        "INSERT INTO authors SELECT authorid, name, papercount, citationcount, hindex FROM {src}",
+    ],
+    "abstracts": [
+        "INSERT INTO abstracts SELECT corpusid, abstract FROM {src}",
+    ],
+    "tldrs": [
+        "INSERT INTO tldrs SELECT corpusid, text FROM {src}",
+    ],
+    "paper-ids": [
+        'INSERT INTO paper_ids SELECT sha, corpusid, "primary" FROM {src}',
+    ],
+    "publication-venues": [
+        "INSERT INTO publication_venues SELECT id, name, type, issn FROM {src}",
+    ],
+}
+
+# Extra per-shard SQL that uses different column schemas (papers flatten)
+_PAPERS_AUTHORS_SCHEMA = {"corpusid": "INTEGER", "authors": "JSON[]"}
+_PAPERS_EXTIDS_SCHEMA = {"corpusid": "INTEGER", "externalids": "JSON"}
+
+
 def ingest_dataset(
     dataset_name: str,
     shards: list[Path],
     db_path: Path,
 ):
-    """Ingest a dataset's shards into DuckDB."""
+    """Ingest a dataset's shards into DuckDB, one shard at a time.
+
+    Processing shards individually keeps memory usage bounded and
+    avoids the OOM kills that occur when globbing all files at once.
+    """
     import duckdb
 
     conn = duckdb.connect(str(db_path))
-    conn.execute("PRAGMA memory_limit='4GB'")
-    conn.execute("PRAGMA threads=4")
+    conn.execute("SET memory_limit='32GB'")
+    conn.execute("SET threads=4")
+    conn.execute("SET preserve_insertion_order=false")
+    conn.execute(f"SET temp_directory='{db_path.parent / 'tmp'}'")
 
     # Ensure tables exist
     for stmt in _CREATE_TABLES_SQL.split(";"):
@@ -439,134 +538,70 @@ def ingest_dataset(
         if stmt:
             conn.execute(stmt)
 
-    glob_pattern = str(shards[0].parent / "*.jsonl.gz")
     logger.info(
-        "Ingesting '%s' from %d shards: %s", dataset_name, len(shards), glob_pattern
+        "Ingesting '%s' from %d shards (one at a time)", dataset_name, len(shards)
     )
 
-    t0 = time.monotonic()
-
-    if dataset_name == "papers":
-        # Papers: extract core fields + flatten authors and external IDs
-        conn.execute("DELETE FROM papers")
-        conn.execute("DELETE FROM paper_authors")
-        conn.execute("DELETE FROM paper_external_ids")
-
-        conn.execute(f"""
-            INSERT INTO papers
-            SELECT corpusid, title, year, venue, citationcount, referencecount,
-                   influentialcitationcount, isopenaccess, publicationdate, publicationvenueid
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{corpusid: 'INTEGER', title: 'VARCHAR', year: 'SMALLINT',
-                         venue: 'VARCHAR', citationcount: 'INTEGER', referencecount: 'INTEGER',
-                         influentialcitationcount: 'INTEGER', isopenaccess: 'BOOLEAN',
-                         publicationdate: 'VARCHAR', publicationvenueid: 'VARCHAR'}})
-        """)
-
-        # Flatten authors
-        conn.execute(f"""
-            INSERT INTO paper_authors
-            SELECT corpusid,
-                   json_extract_string(author, '$.authorId'),
-                   json_extract_string(author, '$.name'),
-                   (row_number() OVER (PARTITION BY corpusid)) - 1
-            FROM (
-                SELECT corpusid, unnest(authors) as author
-                FROM read_json('{glob_pattern}',
-                    format='newline_delimited', ignore_errors=true,
-                    columns={{corpusid: 'INTEGER', authors: 'JSON[]'}})
-                WHERE authors IS NOT NULL
-            )
-        """)
-
-        # Flatten external IDs
-        conn.execute(f"""
-            INSERT INTO paper_external_ids
-            SELECT corpusid, key, value
-            FROM (
-                SELECT corpusid,
-                       unnest(map_keys(CAST(externalids AS MAP(VARCHAR, VARCHAR)))) as key,
-                       unnest(map_values(CAST(externalids AS MAP(VARCHAR, VARCHAR)))) as value
-                FROM read_json('{glob_pattern}',
-                    format='newline_delimited', ignore_errors=true,
-                    columns={{corpusid: 'INTEGER', externalids: 'JSON'}})
-                WHERE externalids IS NOT NULL
-            )
-            WHERE value IS NOT NULL AND value != ''
-        """)
-
-    elif dataset_name == "citations":
-        conn.execute("DELETE FROM citations")
-        conn.execute(f"""
-            INSERT INTO citations
-            SELECT citingcorpusid, citedcorpusid, isinfluential
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{citingcorpusid: 'INTEGER', citedcorpusid: 'INTEGER',
-                         isinfluential: 'BOOLEAN'}})
-        """)
-
-    elif dataset_name == "authors":
-        conn.execute("DELETE FROM authors")
-        conn.execute(f"""
-            INSERT INTO authors
-            SELECT authorid, name, papercount, citationcount, hindex
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{authorid: 'VARCHAR', name: 'VARCHAR',
-                         papercount: 'INTEGER', citationcount: 'INTEGER',
-                         hindex: 'INTEGER'}})
-        """)
-
-    elif dataset_name == "abstracts":
-        conn.execute("DELETE FROM abstracts")
-        conn.execute(f"""
-            INSERT INTO abstracts
-            SELECT corpusid, abstract
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{corpusid: 'INTEGER', abstract: 'VARCHAR'}})
-        """)
-
-    elif dataset_name == "tldrs":
-        conn.execute("DELETE FROM tldrs")
-        conn.execute(f"""
-            INSERT INTO tldrs
-            SELECT corpusid, text
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{corpusid: 'INTEGER', text: 'VARCHAR'}})
-        """)
-
-    elif dataset_name == "paper-ids":
-        conn.execute("DELETE FROM paper_ids")
-        conn.execute(f"""
-            INSERT INTO paper_ids
-            SELECT sha, corpusid, "primary"
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{sha: 'VARCHAR', corpusid: 'INTEGER', "primary": 'BOOLEAN'}})
-        """)
-
-    elif dataset_name == "publication-venues":
-        conn.execute("DELETE FROM publication_venues")
-        conn.execute(f"""
-            INSERT INTO publication_venues
-            SELECT id, name, type, issn
-            FROM read_json('{glob_pattern}',
-                format='newline_delimited', ignore_errors=true,
-                columns={{id: 'VARCHAR', name: 'VARCHAR', type: 'VARCHAR',
-                         issn: 'VARCHAR'}})
-        """)
-
-    else:
+    if dataset_name not in _INSERT_TEMPLATES:
         logger.warning("No ingestion handler for dataset '%s'", dataset_name)
         conn.close()
         return
 
-    # Record count
+    schema = _DATASET_SCHEMAS[dataset_name]
+
+    # Clear existing data
     table_name = dataset_name.replace("-", "_")
+    conn.execute(f"DELETE FROM {table_name}")
+    if dataset_name == "papers":
+        conn.execute("DELETE FROM paper_authors")
+        conn.execute("DELETE FROM paper_external_ids")
+
+    t0 = time.monotonic()
+    templates = _INSERT_TEMPLATES[dataset_name]
+
+    for i, shard in enumerate(shards, 1):
+        shard_path = str(shard)
+        src = _read_json_clause(shard_path, schema)
+
+        for tmpl in templates:
+            conn.execute(tmpl.format(src=src))
+
+        # Papers have extra flatten steps per shard
+        if dataset_name == "papers":
+            # Flatten authors
+            author_src = _read_json_clause(shard_path, _PAPERS_AUTHORS_SCHEMA)
+            conn.execute(f"""
+                INSERT INTO paper_authors
+                SELECT corpusid,
+                       json_extract_string(author, '$.authorId'),
+                       json_extract_string(author, '$.name'),
+                       (row_number() OVER (PARTITION BY corpusid)) - 1
+                FROM (
+                    SELECT corpusid, unnest(authors) as author
+                    FROM {author_src}
+                    WHERE authors IS NOT NULL
+                )
+            """)
+
+            # Flatten external IDs
+            extid_src = _read_json_clause(shard_path, _PAPERS_EXTIDS_SCHEMA)
+            conn.execute(f"""
+                INSERT INTO paper_external_ids
+                SELECT corpusid, key, value
+                FROM (
+                    SELECT corpusid,
+                           unnest(map_keys(CAST(externalids AS MAP(VARCHAR, VARCHAR)))) as key,
+                           unnest(map_values(CAST(externalids AS MAP(VARCHAR, VARCHAR)))) as value
+                    FROM {extid_src}
+                    WHERE externalids IS NOT NULL
+                )
+                WHERE value IS NOT NULL AND value != ''
+            """)
+
+        elapsed = time.monotonic() - t0
+        logger.info("  [%d/%d] %s (%.0fs elapsed)", i, len(shards), shard.name, elapsed)
+
+    # Record count
     try:
         count = conn.execute(f"SELECT count(*) FROM {table_name}").fetchone()[0]
     except Exception:
@@ -595,22 +630,86 @@ def ingest_dataset(
     conn.close()
 
 
+def _sort_table(
+    conn,
+    table_name: str,
+    sort_cols: str,
+    is_copy: bool,
+    source_table: str | None,
+    t0: float,
+):
+    """Sort a table in-place or create a sorted copy."""
+    src = source_table if is_copy else table_name
+    if is_copy:
+        logger.info(
+            "  Creating sorted copy %s (from %s, ORDER BY %s)...",
+            table_name,
+            src,
+            sort_cols,
+        )
+        conn.execute(f"""
+            CREATE OR REPLACE TABLE {table_name} AS
+            SELECT * FROM {src} ORDER BY {sort_cols}
+        """)
+    else:
+        logger.info("  Sorting %s by %s...", table_name, sort_cols)
+        conn.execute(f"""
+            CREATE OR REPLACE TABLE {table_name} AS
+            SELECT * FROM {table_name} ORDER BY {sort_cols}
+        """)
+    elapsed = time.monotonic() - t0
+    logger.info("  Done: %s (%.0fs elapsed)", table_name, elapsed)
+
+
 def build_indexes(db_path: Path):
-    """Build all indexes (faster to do after bulk insert)."""
+    """Optimize all tables for fast lookups via sorting + zone maps.
+
+    DuckDB ART indexes are in-memory only (cannot spill to disk),
+    making them unusable for tables with >100M rows on a 64GB machine.
+
+    Instead, we sort each table by its primary lookup key.  DuckDB's
+    zone-map stats (min/max per row group) then let point queries skip
+    99.99% of the data — equivalent to an index, zero extra RAM.
+
+    ORDER BY *does* support spilling to disk via temp_directory.
+    """
     import duckdb
 
-    logger.info("Building indexes...")
+    logger.info("Optimizing tables (sorting for zone-map lookups)...")
     conn = duckdb.connect(str(db_path))
+    conn.execute("SET memory_limit='8GB'")
+    conn.execute("SET threads=1")
+    conn.execute("SET preserve_insertion_order=false")
+    conn.execute(f"SET temp_directory='{db_path.parent / 'tmp'}'")
     t0 = time.monotonic()
 
-    for stmt in _CREATE_INDEXES_SQL.split(";"):
-        stmt = stmt.strip()
-        if stmt:
-            logger.info("  %s", stmt[:60])
-            conn.execute(stmt)
+    existing = {t[0] for t in conn.execute("SHOW TABLES").fetchall()}
+
+    for table_name, sort_cols, is_copy, source_table in _SORT_OPTIMIZATIONS:
+        src = source_table if is_copy else table_name
+
+        # Skip if source table doesn't exist or is empty
+        if src not in existing:
+            logger.info("  Skipping %s: source table %s not found", table_name, src)
+            continue
+
+        # Skip reverse copies that already exist (idempotent)
+        if is_copy and table_name in existing:
+            logger.info("  %s already exists, skipping", table_name)
+            continue
+
+        try:
+            row = conn.execute(f"SELECT count(*) FROM {src}").fetchone()
+            if not row or row[0] == 0:
+                logger.info("  Skipping %s: source table %s is empty", table_name, src)
+                continue
+        except Exception:
+            continue
+
+        _sort_table(conn, table_name, sort_cols, is_copy, source_table, t0)
 
     elapsed = time.monotonic() - t0
-    logger.info("Indexes built in %.1fs", elapsed)
+    logger.info("All optimizations done in %.0fs", elapsed)
     conn.close()
 
 

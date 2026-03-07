@@ -71,26 +71,32 @@ class S2DataSource(Protocol):
         """Full paper metadata by corpus ID (integer)."""
         ...
 
-    async def get_references(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_references(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
         """Papers cited by s2_id. None = unknown, [] = no references."""
         ...
 
-    async def get_citations(self, s2_id: str) -> list[EdgeRecord] | None:
+    async def get_citations(
+        self,
+        s2_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[EdgeRecord] | None:
         """Papers citing s2_id. None = unknown, [] = no citations."""
         ...
 
-    async def resolve_id(
-        self, id_type: str, identifier: str
-    ) -> str | None:
+    async def resolve_id(self, id_type: str, identifier: str) -> str | None:
         """Map an external ID (DOI, ArXiv, title) to an S2 paper ID (SHA).
 
         id_type: one of 'DOI', 'ArXiv', 'PubMed', 'DBLP', 'MAG', 'title'
         """
         ...
 
-    async def search(
-        self, query: str, limit: int = 10
-    ) -> list[PaperRecord] | None:
+    async def search(self, query: str, limit: int = 10) -> list[PaperRecord] | None:
         """Search papers by title/keyword."""
         ...
 
@@ -103,10 +109,4 @@ class S2DataSource(Protocol):
         refs = await self.get_references(s2_id)
         if refs is None:
             return None
-        return {
-            e.cited_s2_id
-            for e in refs
-            if e.cited_s2_id
-        }
-""",
-<parameter name="Complexity">7
+        return {e.cited_s2_id for e in refs if e.cited_s2_id}

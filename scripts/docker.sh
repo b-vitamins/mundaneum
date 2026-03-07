@@ -11,6 +11,7 @@ MEILI_PORT="${MEILI_PORT:-17700}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-folio}"
 BIB_DIRECTORY="${BIB_DIRECTORY:-}"
 DOCS_DIRECTORY="${DOCS_DIRECTORY:-/home/b/documents}"  # Where PDFs are stored
+S2_DATA_DIR="${S2_DATA_DIR:-/data/s2}"  # DuckDB S2 corpus
 NETWORK_NAME="folio-net"
 
 # Get real Docker CLI (Guix wraps 'docker' as podman)
@@ -114,6 +115,12 @@ start_folio() {
         echo "  Documents: $DOCS_DIRECTORY"
     fi
     
+    # S2 corpus mount (DuckDB database)
+    if [ -n "$S2_DATA_DIR" ] && [ -d "$S2_DATA_DIR" ]; then
+        mounts="$mounts -v $S2_DATA_DIR:/data/s2:ro"
+        echo "  S2 Corpus: $S2_DATA_DIR → /data/s2"
+    fi
+    
     $DOCKER run -d \
         --name folio \
         --network host \
@@ -121,6 +128,7 @@ start_folio() {
         -e DB_PORT=$DB_PORT \
         -e DATABASE_URL=postgresql://folio:$POSTGRES_PASSWORD@127.0.0.1:$DB_PORT/folio \
         -e MEILI_URL=http://127.0.0.1:$MEILI_PORT \
+        -e S2_CORPUS_PATH=/data/s2/corpus.duckdb \
         $mounts \
         folio
 }

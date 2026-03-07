@@ -10,15 +10,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
-from sqlalchemy import desc, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.exceptions import NotFoundError
 from app.logging import get_logger
-from app.models import Entry, EntryAuthor, S2Citation, S2Paper
+from app.models import Entry, EntryAuthor
 from app.services.s2 import get_sync_orchestrator
+from app.services.s2_corpus import get_data_source
 
 logger = get_logger(__name__)
 
@@ -355,8 +356,8 @@ async def get_entry_s2(
     """
     Get S2 metadata and sync status for an entry.
 
-    Triggers sync if needed. Returns current status for progressive loading.
-    Frontend polls this while sync_status == 'syncing'.
+    Tries local corpus (DuckDB) first. Falls back to sync orchestrator
+    for papers not in the local corpus.
     """
     from app.services.s2 import SyncStatus
 
@@ -366,52 +367,62 @@ async def get_entry_s2(
     if not entry:
         raise NotFoundError("Entry", str(entry_id))
 
-    # Trigger sync (idempotent)
+    source = get_data_source()
+
+    # If we already have an s2_id, try local corpus first
+    if entry.s2_id:
+        paper = await source.get_paper(entry.s2_id)
+        if paper is not None:
+            return S2MetaResponse(
+                sync_status="synced",
+                s2_id=paper.s2_id,
+                title=paper.title,
+                abstract=paper.abstract,
+                tldr=paper.tldr,
+                citation_count=paper.citation_count,
+                reference_count=paper.reference_count,
+                influential_citation_count=paper.influential_citation_count,
+                fields_of_study=paper.fields_of_study,
+                publication_types=paper.publication_types,
+                is_open_access=paper.is_open_access,
+                open_access_pdf_url=paper.open_access_pdf_url,
+                external_ids=paper.external_ids,
+                s2_url=f"https://www.semanticscholar.org/paper/{paper.s2_id}",
+            )
+
+    # No s2_id or not in local corpus — fall back to sync orchestrator
     orchestrator = get_sync_orchestrator()
     status = await orchestrator.ensure_synced(str(entry_id))
 
     if status == SyncStatus.SYNCING:
         return S2MetaResponse(sync_status="syncing")
-
     if status == SyncStatus.NO_MATCH:
         return S2MetaResponse(sync_status="no_match")
 
-    # Fetch S2 paper data
-    if not entry.s2_id:
-        # Refresh entry from DB (ensure_synced may have updated it)
-        await db.refresh(entry)
-
+    # Refresh entry from DB (ensure_synced may have resolved s2_id)
+    await db.refresh(entry)
     if not entry.s2_id:
         return S2MetaResponse(sync_status="pending")
 
-    paper_result = await db.execute(select(S2Paper).where(S2Paper.s2_id == entry.s2_id))
-    paper = paper_result.scalar_one_or_none()
-
+    # Try again with the newly resolved s2_id
+    paper = await source.get_paper(entry.s2_id)
     if not paper:
         return S2MetaResponse(sync_status="pending", s2_id=entry.s2_id)
-
-    tldr_text = None
-    if paper.tldr and isinstance(paper.tldr, dict):
-        tldr_text = paper.tldr.get("text")
-
-    oa_url = None
-    if paper.open_access_pdf and isinstance(paper.open_access_pdf, dict):
-        oa_url = paper.open_access_pdf.get("url")
 
     return S2MetaResponse(
         sync_status="synced",
         s2_id=paper.s2_id,
         title=paper.title,
         abstract=paper.abstract,
-        tldr=tldr_text,
+        tldr=paper.tldr,
         citation_count=paper.citation_count,
         reference_count=paper.reference_count,
         influential_citation_count=paper.influential_citation_count,
-        fields_of_study=paper.fields_of_study or [],
-        publication_types=paper.publication_types or [],
-        is_open_access=paper.is_open_access or False,
-        open_access_pdf_url=oa_url,
-        external_ids=paper.external_ids or {},
+        fields_of_study=paper.fields_of_study,
+        publication_types=paper.publication_types,
+        is_open_access=paper.is_open_access,
+        open_access_pdf_url=paper.open_access_pdf_url,
+        external_ids=paper.external_ids,
         s2_url=f"https://www.semanticscholar.org/paper/{paper.s2_id}",
     )
 
@@ -436,46 +447,37 @@ async def get_citations(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get citations (incoming edges) for this entry."""
-    # 1. Get Entry to find s2_id
+    """Get citations (incoming edges) for this entry via ChainedSource."""
     res = await db.execute(select(Entry.s2_id).where(Entry.id == entry_id))
     s2_id = res.scalar_one_or_none()
-
     if not s2_id:
-        # If no S2 ID, return empty list (sync might be pending)
         return []
 
-    # 2. Query S2Citations joined with S2Paper (source)
-    # We want papers that CITE this paper.
-    # So citation.target_id == s2_id. We fetch citation.source.
+    source = get_data_source()
+    edges = await source.get_citations(s2_id)
+    if not edges:
+        return []
 
-    stmt = (
-        select(S2Citation, S2Paper)
-        .join(S2Paper, S2Citation.source_id == S2Paper.s2_id)
-        .where(S2Citation.target_id == s2_id)
-        .order_by(desc(S2Citation.is_influential), desc(S2Paper.citation_count))
-        .limit(100)
-    )
-
-    result = await db.execute(stmt)
-    rows = result.all()
-
+    # Look up paper metadata for each citing paper
     response = []
-    for citation, paper in rows:
-        response.append(
-            S2PaperResponse(
-                s2_id=paper.s2_id,
-                title=paper.title,
-                year=paper.year,
-                venue=paper.venue,
-                authors=paper.authors,
-                tldr=paper.tldr,
-                citation_count=paper.citation_count,
-                is_influential=citation.is_influential,
-                contexts=citation.contexts,
-                intents=citation.intents,
+    for edge in edges[:100]:  # limit to 100
+        citing_id = edge.citing_s2_id
+        if not citing_id:
+            continue
+        paper = await source.get_paper(citing_id)
+        if paper:
+            response.append(
+                S2PaperResponse(
+                    s2_id=paper.s2_id or citing_id,
+                    title=paper.title,
+                    year=paper.year,
+                    venue=paper.venue,
+                    authors=paper.authors,
+                    tldr={"text": paper.tldr} if paper.tldr else None,
+                    citation_count=paper.citation_count,
+                    is_influential=edge.is_influential,
+                )
             )
-        )
 
     return response
 
@@ -485,43 +487,36 @@ async def get_references(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get references (outgoing edges) for this entry."""
+    """Get references (outgoing edges) for this entry via ChainedSource."""
     res = await db.execute(select(Entry.s2_id).where(Entry.id == entry_id))
     s2_id = res.scalar_one_or_none()
-
     if not s2_id:
         return []
 
-    # 2. Query S2Citations joined with S2Paper (target)
-    # This paper CITES target.
-    # So citation.source_id == s2_id. We fetch citation.target.
+    source = get_data_source()
+    edges = await source.get_references(s2_id)
+    if not edges:
+        return []
 
-    stmt = (
-        select(S2Citation, S2Paper)
-        .join(S2Paper, S2Citation.target_id == S2Paper.s2_id)
-        .where(S2Citation.source_id == s2_id)
-        .order_by(desc(S2Citation.is_influential), desc(S2Paper.citation_count))
-        .limit(100)
-    )
-
-    result = await db.execute(stmt)
-    rows = result.all()
-
+    # Look up paper metadata for each referenced paper
     response = []
-    for citation, paper in rows:
-        response.append(
-            S2PaperResponse(
-                s2_id=paper.s2_id,
-                title=paper.title,
-                year=paper.year,
-                venue=paper.venue,
-                authors=paper.authors,
-                tldr=paper.tldr,
-                citation_count=paper.citation_count,
-                is_influential=citation.is_influential,
-                contexts=citation.contexts,
-                intents=citation.intents,
+    for edge in edges[:100]:  # limit to 100
+        cited_id = edge.cited_s2_id
+        if not cited_id:
+            continue
+        paper = await source.get_paper(cited_id)
+        if paper:
+            response.append(
+                S2PaperResponse(
+                    s2_id=paper.s2_id or cited_id,
+                    title=paper.title,
+                    year=paper.year,
+                    venue=paper.venue,
+                    authors=paper.authors,
+                    tldr={"text": paper.tldr} if paper.tldr else None,
+                    citation_count=paper.citation_count,
+                    is_influential=edge.is_influential,
+                )
             )
-        )
 
     return response

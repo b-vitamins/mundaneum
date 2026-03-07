@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type GraphNode, type GraphData, type AggregateEntry, ApiError } from '@/api/client'
+import { api, type GraphNode, type GraphData } from '@/api/client'
 import { useForceGraph } from '@/composables/useForceGraph'
 
 const route = useRoute()
@@ -17,6 +17,7 @@ const loading = ref(true)
 const error = ref('')
 const depth = ref(1)
 const maxNodes = ref(40)
+const fullGraphData = ref<GraphData | null>(null)  // Cached full 200-node response
 const showPanel = ref(true)
 const graphData = ref<GraphData | null>(null)
 const activeTab = ref<'graph' | 'prior' | 'derivative'>('graph')
@@ -46,22 +47,14 @@ const maxHistCount = computed(() => Math.max(1, ...yearHistogram.value.map(h => 
 
 const syncing = ref(false)
 
-// Fetch graph data (with 202 polling for in-progress sync)
+// Fetch graph data (over-fetch 200 nodes, cache for client-side filtering)
 const fetchGraph = async () => {
   loading.value = true
   error.value = ''
   syncing.value = false
   try {
-    const data = await api.getGraph(entryId, depth.value, maxNodes.value)
-    graphData.value = data
-
-    // Handle 202 syncing status (backend returns {status: 'syncing'})
-    if ((data as any).status === 'syncing') {
-      syncing.value = true
-      loading.value = false
-      setTimeout(fetchGraph, 5000)
-      return
-    }
+    const data = await api.getGraph(entryId, depth.value, 200)
+    fullGraphData.value = data
 
     if (data.nodes.length === 0) {
       const msg = (data as any).message
@@ -76,20 +69,43 @@ const fetchGraph = async () => {
       filterYearMin.value = yearMin.value
       filterYearMax.value = yearMax.value
     }
-    graph.loadData(data)
+    // Load sliced data based on current slider value
+    sliceAndLoad(data, maxNodes.value)
   } catch (e) {
-    if (e instanceof ApiError && e.status === 202) {
-      // Axios may throw for non-2xx; handle 202
-      syncing.value = true
-      loading.value = false
-      setTimeout(fetchGraph, 5000)
-      return
-    }
     error.value = e instanceof Error ? e.message : 'Failed to load graph data.'
     console.error(e)
   } finally {
     loading.value = false
   }
+}
+
+// Slice cached data to N nodes and reload graph (instant, no API call)
+const sliceAndLoad = (data: GraphData, nodeCount: number) => {
+  // Center node is always included; slice the rest by position (already ranked)
+  const centerId = data.center_id
+  const centerNode = data.nodes.find(n => n.id === centerId)
+  const otherNodes = data.nodes.filter(n => n.id !== centerId)
+  const sliced = centerNode
+    ? [centerNode, ...otherNodes.slice(0, nodeCount - 1)]
+    : otherNodes.slice(0, nodeCount)
+  const slicedIds = new Set(sliced.map(n => n.id))
+
+  // Filter edges to only include those between sliced nodes
+  const slicedEdges = data.edges.filter(
+    e => slicedIds.has(e.source) && slicedIds.has(e.target)
+  )
+  const slicedSimEdges = data.similarity_edges.filter(
+    e => slicedIds.has(e.source) && slicedIds.has(e.target)
+  )
+
+  const slicedData: GraphData = {
+    ...data,
+    nodes: sliced,
+    edges: slicedEdges,
+    similarity_edges: slicedSimEdges,
+  }
+  graphData.value = slicedData
+  graph.loadData(slicedData)
 }
 
 // Initialize canvas
@@ -107,14 +123,13 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
 })
 
-// Re-fetch on depth/maxNodes change
+// Re-fetch only on depth change
 watch(depth, fetchGraph)
+// Slider: instant client-side filtering from cached data (no API call)
 watch(maxNodes, () => {
-  // Debounce slider
-  const val = maxNodes.value
-  setTimeout(() => {
-    if (maxNodes.value === val) fetchGraph()
-  }, 300)
+  if (fullGraphData.value && fullGraphData.value.nodes.length > 0) {
+    sliceAndLoad(fullGraphData.value, maxNodes.value)
+  }
 })
 
 // Node click: select and show panel
@@ -264,9 +279,9 @@ watch(filterKeyword, () => {
           <input
             type="range"
             v-model.number="maxNodes"
-            min="20"
-            max="150"
-            step="10"
+            min="10"
+            max="200"
+            step="5"
             class="range-slider"
           />
         </div>

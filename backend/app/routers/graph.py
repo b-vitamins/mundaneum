@@ -9,15 +9,15 @@ database backend can be swapped in without touching this file.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.logging import get_logger
 from app.services.graph import get_graph_provider
-from app.services.s2 import SyncStatus, get_sync_orchestrator
+from app.services.s2 import get_sync_orchestrator
+from app.services.s2_corpus import get_local_source
 
 logger = get_logger(__name__)
 
@@ -85,6 +85,20 @@ class SimilarityEdgeResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────────────────
+# Background sync helper
+# ──────────────────────────────────────────────────────────
+
+
+async def _background_sync(entry_id: str) -> None:
+    """Fire-and-forget S2 sync. Ensures future graph requests benefit."""
+    try:
+        orchestrator = get_sync_orchestrator()
+        await orchestrator.ensure_synced(entry_id)
+    except Exception as e:
+        logger.warning("Background sync failed for %s: %s", entry_id, e)
+
+
+# ──────────────────────────────────────────────────────────
 # Endpoint
 # ──────────────────────────────────────────────────────────
 
@@ -96,61 +110,60 @@ async def get_graph(
     max_nodes: int = Query(
         default=80, ge=10, le=200, description="Max nodes to return"
     ),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get the citation subgraph centered on a library entry.
 
-    Returns nodes (papers) and edges (citation links) for
-    interactive graph visualization.
+    DuckDB-first: builds graph instantly from local corpus data.
+    API sync runs in the background for future benefit.
     """
-    orchestrator = get_sync_orchestrator()
-    provider = get_graph_provider(db, transport=orchestrator._transport)
+    local = get_local_source()
+    provider = get_graph_provider(db, source=local)
+    entry_id_str = str(entry_id)
 
-    # Auto-trigger S2 sync if needed (idempotent)
-    sync_status = await orchestrator.ensure_synced(str(entry_id))
+    # Fire background sync (non-blocking — enriches data for next request)
+    background_tasks.add_task(_background_sync, entry_id_str)
 
-    if sync_status == SyncStatus.SYNCING:
-        return JSONResponse(
-            status_code=202,
-            content={
-                "status": "syncing",
-                "message": "Citation data is being synced. Retry shortly.",
-            },
-            headers={"Retry-After": "5"},
-        )
+    # Resolve entry to S2 ID from Postgres
+    s2_id = await provider.resolve_entry_s2_id(entry_id_str)
 
-    if sync_status == SyncStatus.NO_MATCH:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "center_id": str(entry_id),
-                "nodes": [],
-                "edges": [],
-                "prior_works": [],
-                "derivative_works": [],
-                "similarity_edges": [],
-                "message": "Could not find this paper on Semantic Scholar.",
-            },
-        )
-
-    # Resolve entry to S2 ID (should exist now after sync)
-    s2_id = await provider.resolve_entry_s2_id(str(entry_id))
     if not s2_id:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "center_id": str(entry_id),
-                "nodes": [],
-                "edges": [],
-                "prior_works": [],
-                "derivative_works": [],
-                "similarity_edges": [],
-                "message": "S2 sync completed but no data available yet.",
-            },
-        )
+        # Entry has no s2_id yet — try DuckDB resolution via DOI/ArXiv
+        if local:
+            from sqlalchemy import select
+            from app.models import Entry
 
-    # Fetch subgraph
+            result = await db.execute(select(Entry).where(Entry.id == entry_id_str))
+            entry = result.scalar_one_or_none()
+            if entry:
+                # Try DOI
+                for fields in [
+                    entry.required_fields or {},
+                    entry.optional_fields or {},
+                ]:
+                    doi = fields.get("doi") or fields.get("DOI")
+                    if doi:
+                        s2_id = await local.resolve_id("DOI", doi.strip())
+                        if s2_id:
+                            break
+                # Try ArXiv
+                if not s2_id:
+                    for fields in [
+                        entry.required_fields or {},
+                        entry.optional_fields or {},
+                    ]:
+                        arxiv = fields.get("arxiv") or fields.get("eprint")
+                        if arxiv:
+                            s2_id = await local.resolve_id("ArXiv", arxiv.strip())
+                            if s2_id:
+                                break
+
+    if not s2_id:
+        return GraphResponse(center_id=entry_id_str)
+
+    # Build graph entirely from DuckDB (instant)
     graph_data = await provider.get_subgraph(
         center_s2_id=s2_id,
         depth=depth,

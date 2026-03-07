@@ -15,15 +15,14 @@ import math
 from collections import Counter
 from dataclasses import dataclass, field
 from itertools import combinations
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Entry, S2Citation, S2Paper
-
-if TYPE_CHECKING:
-    from app.services.s2 import S2Transport
+from app.models import Entry
+from app.services.s2_corpus import get_data_source
+from app.services.s2_protocol import PaperRecord, S2DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -139,12 +138,12 @@ class GraphProvider(Protocol):
 
 class SQLAlchemyGraphProvider:
     """
-    Graph provider backed by the existing S2Paper and S2Citation
-    tables via SQLAlchemy async queries + live S2 API enrichment.
+    Graph provider backed by ChainedSource (DuckDB → LiveAPI) for S2 data
+    and SQLAlchemy for Folio entry lookups only.
 
     Connected Papers style similarity-first node selection:
-    1. Gather 1-hop candidates from local DB
-    2. Enrich top candidates via S2 API (fetch their references)
+    1. Gather 1-hop candidates via ChainedSource
+    2. Fetch reference sets for candidates (instant from DuckDB)
     3. Rank candidates by co-citation + bibliographic coupling similarity
     4. Select top-N most similar papers
     5. Compute pairwise similarity edges between selected papers
@@ -153,10 +152,10 @@ class SQLAlchemyGraphProvider:
     def __init__(
         self,
         session: AsyncSession,
-        transport: S2Transport | None = None,
+        source: S2DataSource | None = None,
     ):
         self.session = session
-        self._transport = transport
+        self._source = source or get_data_source()
 
     async def resolve_entry_s2_id(self, entry_id: str) -> str | None:
         """Resolve a Folio entry UUID to its Semantic Scholar paper ID."""
@@ -165,88 +164,58 @@ class SQLAlchemyGraphProvider:
         )
         return result.scalar_one_or_none()
 
-    async def _fetch_edges_db(
-        self, paper_ids: list[str], chunk_size: int = 500
+    async def _fetch_edges(
+        self, paper_ids: list[str], max_citations: int = 500
     ) -> list[tuple[str, str, bool]]:
-        """Fetch all citation edges from local DB touching the given paper IDs."""
+        """Fetch citation edges touching the given paper IDs.
+
+        Parallelized: all DuckDB queries run concurrently via the thread pool.
+        """
+
+        async def _edges_for(pid: str) -> list[tuple[str, str, bool]]:
+            result: list[tuple[str, str, bool]] = []
+            refs = await self._source.get_references(pid)
+            if refs:
+                for e in refs:
+                    if e.cited_s2_id:
+                        result.append((pid, e.cited_s2_id, e.is_influential))
+            cits = await self._source.get_citations(pid, limit=max_citations)
+            if cits:
+                for e in cits:
+                    if e.citing_s2_id:
+                        result.append((e.citing_s2_id, pid, e.is_influential))
+            return result
+
+        results = await asyncio.gather(*[_edges_for(pid) for pid in paper_ids])
         edges: list[tuple[str, str, bool]] = []
-
-        for i in range(0, len(paper_ids), chunk_size):
-            chunk = paper_ids[i : i + chunk_size]
-
-            outgoing = await self.session.execute(
-                select(
-                    S2Citation.source_id,
-                    S2Citation.target_id,
-                    S2Citation.is_influential,
-                ).where(S2Citation.source_id.in_(chunk))
-            )
-            for src, tgt, inf in outgoing:
-                edges.append((src, tgt, inf))
-
-            incoming = await self.session.execute(
-                select(
-                    S2Citation.source_id,
-                    S2Citation.target_id,
-                    S2Citation.is_influential,
-                ).where(S2Citation.target_id.in_(chunk))
-            )
-            for src, tgt, inf in incoming:
-                edges.append((src, tgt, inf))
-
+        for r in results:
+            edges.extend(r)
         return edges
 
-    async def _enrich_from_api(
+    async def _enrich_references(
         self,
         paper_ids: list[str],
         max_papers: int = 30,
     ) -> list[tuple[str, str, bool]]:
-        """
-        Fetch references for candidate papers via the S2 API.
-
-        Only fetches references (what each candidate cites) — this provides
-        the bibliographic coupling signal. Co-citation data already comes
-        from the local DB's 1-hop edges for the center paper.
-
-        Rate-limited: 3 concurrent requests at a time to stay under S2's
-        unauthenticated rate limit of ~1 req/sec.
-        """
-        if not self._transport:
-            return []
-
+        """Fetch references for candidate papers (parallelized)."""
         ids_to_fetch = paper_ids[:max_papers]
+
+        async def _refs_for(pid: str) -> list[tuple[str, str, bool]]:
+            result: list[tuple[str, str, bool]] = []
+            refs = await self._source.get_references(pid)
+            if refs:
+                for e in refs:
+                    if e.cited_s2_id:
+                        result.append((pid, e.cited_s2_id, e.is_influential))
+            return result
+
+        results = await asyncio.gather(*[_refs_for(pid) for pid in ids_to_fetch])
         edges: list[tuple[str, str, bool]] = []
-
-        # Fetch references in small batches to avoid 429s
-        batch_size = 3
-        for batch_start in range(0, len(ids_to_fetch), batch_size):
-            batch = ids_to_fetch[batch_start : batch_start + batch_size]
-
-            tasks = [
-                self._transport.get(
-                    f"paper/{pid}/references",
-                    params={
-                        "fields": "citedPaper.paperId,isInfluential",
-                        "limit": "100",
-                    },
-                )
-                for pid in batch
-            ]
-            results = await asyncio.gather(*tasks)
-
-            for pid, result in zip(batch, results):
-                if not result or not result.get("data"):
-                    continue
-                for item in result["data"]:
-                    cited = item.get("citedPaper") or {}
-                    cited_id = cited.get("paperId")
-                    if not cited_id:
-                        continue
-                    is_inf = item.get("isInfluential", False)
-                    edges.append((pid, cited_id, is_inf))
+        for r in results:
+            edges.extend(r)
 
         logger.info(
-            "API enrichment: fetched %d reference edges for %d papers",
+            "Reference enrichment: %d edges for %d papers",
             len(edges),
             len(ids_to_fetch),
         )
@@ -308,8 +277,8 @@ class SQLAlchemyGraphProvider:
         """
         max_nodes = min(max_nodes, 200)
 
-        # ── Step 1: Gather 1-hop candidates from local DB ──
-        hop1_edges = await self._fetch_edges_db([center_s2_id])
+        # ── Step 1: Gather 1-hop candidates via ChainedSource ──
+        hop1_edges = await self._fetch_edges([center_s2_id])
 
         candidate_ids: set[str] = set()
         for src, tgt, _ in hop1_edges:
@@ -328,41 +297,37 @@ class SQLAlchemyGraphProvider:
         )
 
         # ── Step 2: Pre-filter top candidates by citation count ──
-        # Fetch metadata for ranking (we need citation counts)
-        chunk_size = 500
-        all_papers: dict[str, S2Paper] = {}
+        all_papers: dict[str, PaperRecord] = {}
         cand_list = list(candidate_ids | {center_s2_id})
-        for i in range(0, len(cand_list), chunk_size):
-            chunk = cand_list[i : i + chunk_size]
-            result = await self.session.execute(
-                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
-            )
-            for paper in result.scalars():
-                all_papers[paper.s2_id] = paper
 
-        # Sort candidates by citation count, take top 100 for API enrichment
+        # Fetch paper metadata for ranking via ChainedSource
+        fetch_tasks = [self._source.get_paper(pid) for pid in cand_list]
+        fetch_results = await asyncio.gather(*fetch_tasks)
+        for pid, paper in zip(cand_list, fetch_results):
+            if paper:
+                all_papers[pid] = paper
+
+        # Sort candidates by citation count, take top 100 for enrichment
         ranked_candidates = sorted(
             candidate_ids,
-            key=lambda pid: (all_papers[pid].citation_count or 0)
-            if pid in all_papers
-            else 0,
+            key=lambda pid: all_papers[pid].citation_count if pid in all_papers else 0,
             reverse=True,
         )
-        api_candidates = ranked_candidates[:100]
+        enrich_candidates = ranked_candidates[:100]
 
-        # ── Step 3: Enrich via S2 API ──
-        api_edges = await self._enrich_from_api(api_candidates)
+        # ── Step 3: Enrich via ChainedSource (instant from DuckDB) ──
+        enrichment_edges = await self._enrich_references(enrich_candidates)
 
-        # Merge local DB edges + API edges
+        # Merge 1-hop edges + enrichment edges
         edge_set: set[tuple[str, str, bool]] = set()
         for e in hop1_edges:
             edge_set.add(e)
-        for e in api_edges:
+        for e in enrichment_edges:
             edge_set.add(e)
         all_edges = list(edge_set)
 
         logger.info(
-            "Graph %s: %d total edges (local + API)",
+            "Graph %s: %d total edges",
             center_s2_id,
             len(all_edges),
         )
@@ -391,33 +356,24 @@ class SQLAlchemyGraphProvider:
         )
 
         # ── Fetch paper metadata for selected nodes ──
-        # Use already-fetched papers + any new ones from API data
-        papers_by_id: dict[str, S2Paper] = {}
+        papers_by_id: dict[str, PaperRecord] = {}
         for pid in selected_ids:
             if pid in all_papers:
                 papers_by_id[pid] = all_papers[pid]
 
         # Fetch any missing papers
         missing = [pid for pid in selected_ids if pid not in papers_by_id]
-        for i in range(0, len(missing), chunk_size):
-            chunk = missing[i : i + chunk_size]
-            result = await self.session.execute(
-                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
-            )
-            for paper in result.scalars():
-                papers_by_id[paper.s2_id] = paper
-
-        selected_id_list = list(selected_ids)
-        for i in range(0, len(selected_id_list), chunk_size):
-            chunk = selected_id_list[i : i + chunk_size]
-            result = await self.session.execute(
-                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
-            )
-            for paper in result.scalars():
-                papers_by_id[paper.s2_id] = paper
+        if missing:
+            missing_tasks = [self._source.get_paper(pid) for pid in missing]
+            missing_results = await asyncio.gather(*missing_tasks)
+            for pid, paper in zip(missing, missing_results):
+                if paper:
+                    papers_by_id[pid] = paper
 
         # ── In-library detection ──
+        selected_id_list = list(selected_ids)
         library_map: dict[str, str] = {}
+        chunk_size = 500
         for i in range(0, len(selected_id_list), chunk_size):
             chunk = selected_id_list[i : i + chunk_size]
             result = await self.session.execute(
@@ -445,13 +401,13 @@ class SQLAlchemyGraphProvider:
 
             nodes.append(
                 GraphNode(
-                    id=paper.s2_id,
+                    id=paper.s2_id or pid,
                     title=paper.title or "Untitled",
                     year=paper.year,
                     venue=paper.venue,
                     authors=authors,
-                    citation_count=paper.citation_count or 0,
-                    fields_of_study=paper.fields_of_study or [],
+                    citation_count=paper.citation_count,
+                    fields_of_study=paper.fields_of_study,
                     in_library=pid in library_map,
                     entry_id=library_map.get(pid),
                 )
@@ -555,32 +511,29 @@ class SQLAlchemyGraphProvider:
 
         Prior works: papers cited by many graph nodes (seminal foundations).
         Derivative works: papers that cite many graph nodes (surveys/recent).
-
-        No minimum frequency threshold — show all relevant papers ranked
-        by frequency × log(citation_count + 1).
         """
-        graph_id_list = list(graph_ids)
-        chunk_size = 500
         counter: Counter[str] = Counter()
 
-        if direction == "prior":
-            for i in range(0, len(graph_id_list), chunk_size):
-                chunk = graph_id_list[i : i + chunk_size]
-                result = await self.session.execute(
-                    select(S2Citation.target_id).where(S2Citation.source_id.in_(chunk))
-                )
-                for (target_id,) in result:
-                    if target_id not in graph_ids:
-                        counter[target_id] += 1
-        else:
-            for i in range(0, len(graph_id_list), chunk_size):
-                chunk = graph_id_list[i : i + chunk_size]
-                result = await self.session.execute(
-                    select(S2Citation.source_id).where(S2Citation.target_id.in_(chunk))
-                )
-                for (source_id,) in result:
-                    if source_id not in graph_ids:
-                        counter[source_id] += 1
+        async def _count_for(pid: str) -> list[str]:
+            ids: list[str] = []
+            if direction == "prior":
+                refs = await self._source.get_references(pid)
+                if refs:
+                    for e in refs:
+                        if e.cited_s2_id and e.cited_s2_id not in graph_ids:
+                            ids.append(e.cited_s2_id)
+            else:
+                cits = await self._source.get_citations(pid, limit=500)
+                if cits:
+                    for e in cits:
+                        if e.citing_s2_id and e.citing_s2_id not in graph_ids:
+                            ids.append(e.citing_s2_id)
+            return ids
+
+        results = await asyncio.gather(*[_count_for(pid) for pid in graph_ids])
+        for ids in results:
+            for s2_id in ids:
+                counter[s2_id] += 1
 
         if not counter:
             return []
@@ -588,18 +541,17 @@ class SQLAlchemyGraphProvider:
         # Take top candidates by raw frequency, then re-rank
         top_ids = [pid for pid, _ in counter.most_common(limit * 3)]
 
-        # Fetch paper metadata
-        papers_by_id: dict[str, S2Paper] = {}
-        for i in range(0, len(top_ids), chunk_size):
-            chunk = top_ids[i : i + chunk_size]
-            result = await self.session.execute(
-                select(S2Paper).where(S2Paper.s2_id.in_(chunk))
-            )
-            for paper in result.scalars():
-                papers_by_id[paper.s2_id] = paper
+        # Fetch paper metadata via ChainedSource
+        fetch_tasks = [self._source.get_paper(pid) for pid in top_ids]
+        fetch_results = await asyncio.gather(*fetch_tasks)
+        papers_by_id: dict[str, PaperRecord] = {}
+        for pid, paper in zip(top_ids, fetch_results):
+            if paper:
+                papers_by_id[pid] = paper
 
         # In-library detection
         library_map: dict[str, str] = {}
+        chunk_size = 500
         for i in range(0, len(top_ids), chunk_size):
             chunk = top_ids[i : i + chunk_size]
             result = await self.session.execute(
@@ -617,7 +569,6 @@ class SQLAlchemyGraphProvider:
                 continue
 
             freq = counter[pid]
-            # No minimum frequency threshold — show all, ranked by score
 
             authors = []
             if paper.authors:
@@ -629,12 +580,12 @@ class SQLAlchemyGraphProvider:
 
             entries.append(
                 AggregateEntry(
-                    id=paper.s2_id,
+                    id=paper.s2_id or pid,
                     title=paper.title or "Untitled",
                     year=paper.year,
                     venue=paper.venue,
                     authors=authors,
-                    citation_count=paper.citation_count or 0,
+                    citation_count=paper.citation_count,
                     frequency=freq,
                     in_library=pid in library_map,
                     entry_id=library_map.get(pid),
@@ -657,12 +608,11 @@ class SQLAlchemyGraphProvider:
 
 def get_graph_provider(
     session: AsyncSession,
-    transport: S2Transport | None = None,
+    source: S2DataSource | None = None,
 ) -> GraphProvider:
     """
     Factory function for obtaining a GraphProvider instance.
 
-    Pass transport to enable live S2 API enrichment for richer
-    similarity graphs (Connected Papers style).
+    Uses ChainedSource (DuckDB → LiveAPI) for all S2 data access.
     """
-    return SQLAlchemyGraphProvider(session, transport=transport)
+    return SQLAlchemyGraphProvider(session, source=source)
