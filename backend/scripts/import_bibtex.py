@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI script to import BibTeX files into Folio.
+CLI script to import BibTeX files into Mundaneum.
 
 Usage:
     python import_bibtex.py /path/to/bib/directory

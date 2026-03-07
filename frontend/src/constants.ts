@@ -1,5 +1,5 @@
 /**
- * Application constants for Folio frontend.
+ * Application constants for Mundaneum frontend.
  */
 
 // Entry types supported by the application
@@ -34,8 +34,8 @@ export const SHORTCUTS = {
 
 // Local storage keys
 export const STORAGE_KEYS = {
-    THEME: 'folio-theme',
-    RECENT_SEARCHES: 'folio:recentSearches',
+    THEME: 'mundaneum-theme',
+    RECENT_SEARCHES: 'mundaneum:recentSearches',
 } as const
 
 // API configuration

@@ -1,5 +1,5 @@
 """
-Meilisearch sync service for Folio.
+Meilisearch sync service for Mundaneum.
 
 Handles syncing entries to Meilisearch for full-text search.
 """

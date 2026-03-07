@@ -1,5 +1,5 @@
 """
-Background ingestion worker for Folio.
+Background ingestion worker for Mundaneum.
 
 Processes bibliography files in background, committing per-file
 for immediate visibility in the UI.

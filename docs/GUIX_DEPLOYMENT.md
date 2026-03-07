@@ -1,40 +1,40 @@
 # Guix Deployment Guide
 
-This document describes how to deploy Folio as an OCI container on a Guix system.
+This document describes how to deploy Mundaneum as an OCI container on a Guix system.
 
 ## Prerequisites
 
 1. **Running services** (via `oci-container-service-type` or native Guix services):
-   - PostgreSQL with a `folio` database
+   - PostgreSQL with a `mundaneum` database
    - Meilisearch
    - Qdrant (optional, for embeddings)
    - HuggingFace Text Embeddings Inference (optional, for embeddings)
 
-2. **Credentials file**: Create `/root/folio-db.credentials` with your PostgreSQL password.
+2. **Credentials file**: Create `/root/mundaneum-db.credentials` with your PostgreSQL password.
 
 ## OCI Container Definition
 
 Add to your `oci-containers.scm`:
 
 ```scheme
-(define folio-db-password
-  (read-secret "/root/folio-db.credentials"))
+(define mundaneum-db-password
+  (read-secret "/root/mundaneum-db.credentials"))
 
-(define oci-folio-service-type
+(define oci-mundaneum-service-type
   (oci-container-configuration
-    (image "ghcr.io/YOUR_USERNAME/folio:latest")
+    (image "ghcr.io/b-vitamins/mundaneum:latest")
     (network "host")
     (ports '(("8080" . "8080")))
     (volumes (list 
                ;; BibTeX files and PDFs (read-only source of truth)
                '("/data/bibliography" . "/data")
                ;; Persistent app state (optional, for caching)
-               '("/var/lib/folio" . "/var/lib/folio")))
+               '("/var/lib/mundaneum" . "/var/lib/mundaneum")))
     (environment 
       `(("DATABASE_URL" . ,(string-append 
-                            "postgresql://folio:" 
-                            folio-db-password 
-                            "@localhost:5432/folio"))
+                            "postgresql://mundaneum:" 
+                            mundaneum-db-password 
+                            "@localhost:5432/mundaneum"))
         ("MEILI_URL" . "http://localhost:7700")
         ("MEILI_API_KEY" . ,meili-master-key)
         ("QDRANT_URL" . "http://localhost:6333")
@@ -50,18 +50,18 @@ Add to your system services in `mileva.scm` (or similar):
 (service oci-container-service-type
          (list oci-meilisearch-service-type
                oci-qdrant-service-type
-               oci-folio-service-type))  ; Add this line
+               oci-mundaneum-service-type))  ; Add this line
 ```
 
 ## PostgreSQL Setup
 
-Add a role for Folio:
+Add a role for Mundaneum:
 
 ```scheme
 (service postgresql-role-service-type
          (postgresql-role-configuration
            (roles (list (postgresql-role
-                          (name "folio")
+                          (name "mundaneum")
                           (create-database? #t)
                           (permissions '(createdb login)))))))
 ```
@@ -70,8 +70,8 @@ Add a role for Folio:
 
 1. **Build locally** (optional, to test):
    ```bash
-   cd /path/to/folio
-   docker build -t folio:test .
+   cd /path/to/mundaneum
+   docker build -t mundaneum:test .
    ```
 
 2. **Push to GHCR** (handled by CI on git push):
@@ -95,6 +95,6 @@ Add a role for Folio:
 | Volume | Mount Point | Purpose |
 |--------|-------------|---------|
 | `/data/bibliography` | `/data` | BibTeX files and PDFs (read-only) |
-| `/var/lib/folio` | `/var/lib/folio` | App cache (optional) |
+| `/var/lib/mundaneum` | `/var/lib/mundaneum` | App cache (optional) |
 
 Note: PostgreSQL data is managed by the native `postgresql-service-type`, not this container.

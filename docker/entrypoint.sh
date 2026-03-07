@@ -8,7 +8,25 @@ set -euo pipefail
 echo "Waiting for database..."
 max_attempts=60
 attempt=1
-while ! nc -z ${DB_HOST:-folio-db} ${DB_PORT:-5432}; do
+DB_HOST="${DB_HOST:-}"
+DB_PORT="${DB_PORT:-}"
+
+if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ]; then
+  db_target=$(python - <<'PY'
+import os
+from urllib.parse import urlparse
+
+parsed = urlparse(os.environ.get("DATABASE_URL", ""))
+host = parsed.hostname or "localhost"
+port = parsed.port or 5432
+print(f"{host}:{port}")
+PY
+)
+  DB_HOST="${DB_HOST:-${db_target%:*}}"
+  DB_PORT="${DB_PORT:-${db_target##*:}}"
+fi
+
+while ! nc -z "$DB_HOST" "$DB_PORT"; do
   if [ $attempt -ge $max_attempts ]; then
     echo "ERROR: Database not available after $max_attempts seconds"
     exit 1
@@ -25,4 +43,4 @@ alembic upgrade head
 
 # Start supervisord
 echo "Starting application..."
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/folio.conf
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/mundaneum.conf

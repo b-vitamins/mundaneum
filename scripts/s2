@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# s2 — Semantic Scholar dataset management for Folio
+# s2 — Semantic Scholar dataset management for Mundaneum
 #
 # Usage:
 #   scripts/s2 download [--datasets papers,citations] [--release 2026-02-17]

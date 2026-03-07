@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import VERSION, settings
 from app.database import check_db_health, engine, get_db
-from app.exceptions import FolioError
+from app.exceptions import MundaneumError
 from app.logging import get_logger, setup_logging
 from app.middleware import RequestIDMiddleware
 from app.models import Author, Collection, Entry
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     import asyncio
 
     setup_logging()
-    logger.info("Starting Folio v%s", VERSION)
+    logger.info("Starting Mundaneum v%s", VERSION)
 
     # Startup validation
     db_ok = await check_db_health()
@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("Shutting down Folio")
+    logger.info("Shutting down Mundaneum")
     backfill_task.cancel()
     try:
         await backfill_task
@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Private library for books and papers",
+    description="Research intelligence platform for books and papers",
     version=VERSION,
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -129,9 +129,9 @@ app.add_middleware(RequestIDMiddleware)
 
 
 # Exception handlers
-@app.exception_handler(FolioError)
-async def folio_exception_handler(request: Request, exc: FolioError):
-    """Handle Folio-specific exceptions."""
+@app.exception_handler(MundaneumError)
+async def mundaneum_exception_handler(request: Request, exc: MundaneumError):
+    """Handle Mundaneum-specific exceptions."""
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.message, **exc.detail},

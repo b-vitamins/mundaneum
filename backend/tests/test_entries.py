@@ -1,5 +1,5 @@
 """
-Entry router tests for Folio API.
+Entry router tests for Mundaneum API.
 """
 
 from uuid import uuid4

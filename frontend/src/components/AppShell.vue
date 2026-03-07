@@ -28,7 +28,7 @@ const goBack = (to: string) => {
   <div class="shell">
     <header class="shell-header">
       <div class="header-left">
-        <router-link to="/" class="brand">Folio</router-link>
+        <router-link to="/" class="brand">Mundaneum</router-link>
         <button
           v-if="backTo"
           class="back-btn btn-subtle btn"

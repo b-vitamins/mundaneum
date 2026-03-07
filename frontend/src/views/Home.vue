@@ -34,8 +34,8 @@ onMounted(async () => {
         {{ isDark ? '☀️' : '🌙' }}
       </button>
 
-      <h1 class="logo">Folio</h1>
-      <p class="tagline">Your personal research library</p>
+      <h1 class="logo">Mundaneum</h1>
+      <p class="tagline">Research intelligence for your library</p>
 
       <form class="search-form" @submit.prevent="handleSearch">
         <div class="search-wrapper">

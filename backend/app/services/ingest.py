@@ -1,5 +1,5 @@
 """
-Import service for Folio.
+Import service for Mundaneum.
 
 Handles importing BibTeX entries into the database.
 """

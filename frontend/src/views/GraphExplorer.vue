@@ -239,7 +239,7 @@ watch(filterKeyword, () => {
     <!-- Top toolbar -->
     <header class="toolbar">
       <div class="toolbar-left">
-        <router-link to="/" class="brand">Folio</router-link>
+        <router-link to="/" class="brand">Mundaneum</router-link>
         <button class="back-btn" @click="router.back()">← Back</button>
         <span class="divider">|</span>
         <span class="toolbar-title">Citation Graph</span>
@@ -533,7 +533,7 @@ watch(filterKeyword, () => {
             v-if="graph.selectedNode.value.in_library && graph.selectedNode.value.entry_id"
             class="action-btn primary"
             @click="goToEntry(graph.selectedNode.value!.entry_id!)"
-          >View in Folio</button>
+          >View in Mundaneum</button>
 
           <button
             v-if="graph.selectedNode.value.in_library && graph.selectedNode.value.entry_id"

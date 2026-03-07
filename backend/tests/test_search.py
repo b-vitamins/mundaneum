@@ -1,5 +1,5 @@
 """
-Search router tests for Folio API.
+Search router tests for Mundaneum API.
 """
 
 import pytest

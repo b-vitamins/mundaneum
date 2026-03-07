@@ -1,5 +1,5 @@
 """
-Request correlation middleware for Folio.
+Request correlation middleware for Mundaneum.
 
 Adds a unique request ID to each request for tracing and debugging.
 """

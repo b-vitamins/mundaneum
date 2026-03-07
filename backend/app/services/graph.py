@@ -44,7 +44,7 @@ class GraphNode:
     citation_count: int = 0
     fields_of_study: list[str] = field(default_factory=list)
     in_library: bool = False
-    entry_id: str | None = None  # Folio UUID if in library
+    entry_id: str | None = None  # Mundaneum UUID if in library
 
 
 @dataclass(slots=True)
@@ -127,7 +127,7 @@ class GraphProvider(Protocol):
         ...
 
     async def resolve_entry_s2_id(self, entry_id: str) -> str | None:
-        """Resolve a Folio entry UUID to its Semantic Scholar paper ID."""
+        """Resolve a Mundaneum entry UUID to its Semantic Scholar paper ID."""
         ...
 
 
@@ -139,7 +139,7 @@ class GraphProvider(Protocol):
 class SQLAlchemyGraphProvider:
     """
     Graph provider backed by ChainedSource (DuckDB → LiveAPI) for S2 data
-    and SQLAlchemy for Folio entry lookups only.
+    and SQLAlchemy for Mundaneum entry lookups only.
 
     Connected Papers style similarity-first node selection:
     1. Gather 1-hop candidates via ChainedSource
@@ -158,7 +158,7 @@ class SQLAlchemyGraphProvider:
         self._source = source or get_data_source()
 
     async def resolve_entry_s2_id(self, entry_id: str) -> str | None:
-        """Resolve a Folio entry UUID to its Semantic Scholar paper ID."""
+        """Resolve a Mundaneum entry UUID to its Semantic Scholar paper ID."""
         result = await self.session.execute(
             select(Entry.s2_id).where(Entry.id == entry_id)
         )

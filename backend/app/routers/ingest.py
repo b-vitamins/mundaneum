@@ -1,5 +1,5 @@
 """
-Import router for Folio API.
+Import router for Mundaneum API.
 """
 
 from pathlib import Path

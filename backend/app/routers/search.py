@@ -1,5 +1,5 @@
 """
-Search router for Folio API.
+Search router for Mundaneum API.
 """
 
 from typing import Optional

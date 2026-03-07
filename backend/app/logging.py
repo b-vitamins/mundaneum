@@ -1,5 +1,5 @@
 """
-Logging configuration for Folio.
+Logging configuration for Mundaneum.
 """
 
 import logging

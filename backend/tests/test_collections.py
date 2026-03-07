@@ -1,5 +1,5 @@
 """
-Collections router tests for Folio API.
+Collections router tests for Mundaneum API.
 """
 
 from uuid import uuid4

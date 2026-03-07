@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Folio Docker Management Script
+# Mundaneum Docker Management Script
 # Works around Guix docker-compose issues by using docker-cli directly
 
 set -euo pipefail
 
 # Configuration (override with environment variables)
-FOLIO_PORT="${FOLIO_PORT:-8080}"
+MUNDANEUM_PORT="${MUNDANEUM_PORT:-8080}"
 DB_PORT="${DB_PORT:-15432}"
 MEILI_PORT="${MEILI_PORT:-17700}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-folio}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-mundaneum}"
 BIB_DIRECTORY="${BIB_DIRECTORY:-}"
 DOCS_DIRECTORY="${DOCS_DIRECTORY:-/home/b/documents}"  # Where PDFs are stored
 S2_DATA_DIR="${S2_DATA_DIR:-/data/s2}"  # DuckDB S2 corpus
-NETWORK_NAME="folio-net"
+NETWORK_NAME="mundaneum-net"
 
 # Get real Docker CLI (Guix wraps 'docker' as podman)
 DOCKER="guix shell docker-cli -- docker"
 
 show_help() {
-    echo "Folio Docker Management"
+    echo "Mundaneum Docker Management"
     echo ""
     echo "Usage: $0 <command>"
     echo ""
@@ -27,25 +27,25 @@ show_help() {
     echo "  start     Start all containers"
     echo "  stop      Stop all containers"
     echo "  status    Show container status"
-    echo "  logs      Show folio container logs"
-    echo "  shell     Open shell in folio container"
-    echo "  clean     Remove all Folio containers and images"
+    echo "  logs      Show mundaneum container logs"
+    echo "  shell     Open shell in mundaneum container"
+    echo "  clean     Remove all Mundaneum containers and images"
     echo ""
     echo "Environment variables:"
-    echo "  FOLIO_PORT         Web UI port (default: 8080)"
+    echo "  MUNDANEUM_PORT         Web UI port (default: 8080)"
     echo "  DB_PORT            PostgreSQL port (default: 15432)"
     echo "  MEILI_PORT         Meilisearch port (default: 17700)"
-    echo "  POSTGRES_PASSWORD  Database password (default: folio)"
+    echo "  POSTGRES_PASSWORD  Database password (default: mundaneum)"
     echo "  BIB_DIRECTORY      Path to BibTeX files (default: ./data)"
     echo ""
 }
 
 build_image() {
-    echo "Building folio image..."
-    $DOCKER build --network=host -t folio .
+    echo "Building mundaneum image..."
+    $DOCKER build --network=host -t mundaneum .
     
     echo "Done! Image built:"
-    $DOCKER images | grep folio
+    $DOCKER images | grep mundaneum
 }
 
 create_network() {
@@ -58,7 +58,7 @@ wait_for_postgres() {
     local attempt=1
     echo "Waiting for PostgreSQL to be ready..."
     while [ $attempt -le $max_attempts ]; do
-        if $DOCKER exec folio-db pg_isready -U folio >/dev/null 2>&1; then
+        if $DOCKER exec mundaneum-db pg_isready -U mundaneum >/dev/null 2>&1; then
             echo "PostgreSQL is ready."
             return 0
         fi
@@ -73,13 +73,13 @@ wait_for_postgres() {
 start_postgres() {
     echo "Starting PostgreSQL..."
     $DOCKER run -d \
-        --name folio-db \
+        --name mundaneum-db \
         --network $NETWORK_NAME \
-        -e POSTGRES_USER=folio \
+        -e POSTGRES_USER=mundaneum \
         -e POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
-        -e POSTGRES_DB=folio \
+        -e POSTGRES_DB=mundaneum \
         -p $DB_PORT:5432 \
-        -v folio_postgres:/var/lib/postgresql/data \
+        -v mundaneum_postgres:/var/lib/postgresql/data \
         docker.io/library/postgres:16-alpine
     
     wait_for_postgres
@@ -88,17 +88,17 @@ start_postgres() {
 start_meilisearch() {
     echo "Starting Meilisearch..."
     $DOCKER run -d \
-        --name folio-search \
+        --name mundaneum-search \
         --network $NETWORK_NAME \
         -e MEILI_ENV=development \
         -e MEILI_NO_ANALYTICS=true \
         -p $MEILI_PORT:7700 \
-        -v folio_meili:/meili_data \
+        -v mundaneum_meili:/meili_data \
         docker.io/getmeili/meilisearch:v1.6
 }
 
-start_folio() {
-    echo "Starting Folio..."
+start_mundaneum() {
+    echo "Starting Mundaneum..."
     
     # Prepare volume mounts
     local mounts=""
@@ -122,28 +122,29 @@ start_folio() {
     fi
     
     $DOCKER run -d \
-        --name folio \
-        --network host \
-        -e DB_HOST=127.0.0.1 \
-        -e DB_PORT=$DB_PORT \
-        -e DATABASE_URL=postgresql://folio:$POSTGRES_PASSWORD@127.0.0.1:$DB_PORT/folio \
-        -e MEILI_URL=http://127.0.0.1:$MEILI_PORT \
+        --name mundaneum \
+        --network $NETWORK_NAME \
+        -p $MUNDANEUM_PORT:8080 \
+        -e DB_HOST=mundaneum-db \
+        -e DB_PORT=5432 \
+        -e DATABASE_URL=postgresql://mundaneum:$POSTGRES_PASSWORD@mundaneum-db:5432/mundaneum \
+        -e MEILI_URL=http://mundaneum-search:7700 \
         -e S2_CORPUS_PATH=/data/s2/corpus.duckdb \
         $mounts \
-        folio
+        mundaneum
 }
 
 start_all() {
     create_network
     start_postgres
     start_meilisearch
-    start_folio
+    start_mundaneum
     
     echo ""
     echo "==================================="
-    echo "Folio is running!"
+    echo "Mundaneum is running!"
     echo "==================================="
-    echo "Web UI:      http://localhost:$FOLIO_PORT"
+    echo "Web UI:      http://localhost:$MUNDANEUM_PORT"
     echo "Database:    localhost:$DB_PORT"
     echo "Meilisearch: http://localhost:$MEILI_PORT"
     echo ""
@@ -151,21 +152,21 @@ start_all() {
 
 stop_all() {
     echo "Stopping containers..."
-    $DOCKER stop folio folio-search folio-db 2>/dev/null || true
-    $DOCKER rm folio folio-search folio-db 2>/dev/null || true
+    $DOCKER stop mundaneum mundaneum-search mundaneum-db 2>/dev/null || true
+    $DOCKER rm mundaneum mundaneum-search mundaneum-db 2>/dev/null || true
     echo "Done."
 }
 
 show_status() {
-    $DOCKER ps --filter "name=folio" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    $DOCKER ps --filter "name=mundaneum" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 }
 
 show_logs() {
-    $DOCKER logs -f --tail 50 folio
+    $DOCKER logs -f --tail 50 mundaneum
 }
 
 open_shell() {
-    $DOCKER exec -it folio /bin/bash
+    $DOCKER exec -it mundaneum /bin/bash
 }
 
 clean_all() {
@@ -173,10 +174,10 @@ clean_all() {
     stop_all
     
     echo "Removing images..."
-    $DOCKER rmi folio folio-backend folio-frontend 2>/dev/null || true
+    $DOCKER rmi mundaneum mundaneum-backend mundaneum-frontend 2>/dev/null || true
     
     echo "Removing volumes (data will be lost)..."
-    $DOCKER volume rm folio_postgres folio_meili 2>/dev/null || true
+    $DOCKER volume rm mundaneum_postgres mundaneum_meili 2>/dev/null || true
     
     echo "Removing network..."
     $DOCKER network rm $NETWORK_NAME 2>/dev/null || true

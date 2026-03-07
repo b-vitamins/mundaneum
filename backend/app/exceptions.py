@@ -1,5 +1,5 @@
 """
-Custom exceptions for Folio API.
+Custom exceptions for Mundaneum API.
 
 These provide clean error responses and consistent error handling.
 """
@@ -7,8 +7,8 @@ These provide clean error responses and consistent error handling.
 from typing import Any
 
 
-class FolioError(Exception):
-    """Base exception for all Folio errors."""
+class MundaneumError(Exception):
+    """Base exception for all Mundaneum errors."""
 
     def __init__(
         self,
@@ -22,7 +22,7 @@ class FolioError(Exception):
         super().__init__(message)
 
 
-class NotFoundError(FolioError):
+class NotFoundError(MundaneumError):
     """Resource not found."""
 
     def __init__(self, resource: str, identifier: str | None = None):
@@ -32,14 +32,14 @@ class NotFoundError(FolioError):
         super().__init__(message, status_code=404)
 
 
-class ValidationError(FolioError):
+class ValidationError(MundaneumError):
     """Request validation failed."""
 
     def __init__(self, message: str, errors: list[dict] | None = None):
         super().__init__(message, status_code=422, detail={"errors": errors or []})
 
 
-class ServiceUnavailableError(FolioError):
+class ServiceUnavailableError(MundaneumError):
     """External service is unavailable."""
 
     def __init__(self, service: str, reason: str | None = None):
@@ -49,14 +49,14 @@ class ServiceUnavailableError(FolioError):
         super().__init__(message, status_code=503)
 
 
-class ConflictError(FolioError):
+class ConflictError(MundaneumError):
     """Resource conflict (e.g., duplicate)."""
 
     def __init__(self, message: str):
         super().__init__(message, status_code=409)
 
 
-class IngestError(FolioError):
+class IngestError(MundaneumError):
     """BibTeX import failed."""
 
     def __init__(self, message: str, errors: int = 0):

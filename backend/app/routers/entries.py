@@ -1,5 +1,5 @@
 """
-Entries router for Folio API.
+Entries router for Mundaneum API.
 """
 
 import asyncio

@@ -1,5 +1,5 @@
 """
-MinIO storage service for Folio.
+MinIO storage service for Mundaneum.
 
 Handles file storage (PDFs, attachments) in MinIO/S3-compatible storage.
 """
@@ -16,7 +16,7 @@ from app.logging import get_logger
 
 logger = get_logger(__name__)
 
-BUCKET_NAME = "folio-files"
+BUCKET_NAME = "mundaneum-files"
 
 
 class StorageError(Exception):

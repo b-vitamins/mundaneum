@@ -36,7 +36,7 @@ async function exportBackup() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `folio-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `mundaneum-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
     backupSuccess.value = `Exported ${backupData.value.entries.length} entries and ${backupData.value.collections.length} collections`

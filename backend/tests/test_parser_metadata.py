@@ -1,7 +1,7 @@
 from app.services.parser import (
     clean_latex_string,
     normalize_venue,
-    parse_folio_comment,
+    parse_mundaneum_comment,
 )
 
 
@@ -21,23 +21,23 @@ def test_clean_latex_string():
     assert clean_latex_string("Hello World") == "Hello World"
 
 
-def test_parse_folio_comment_valid():
+def test_parse_mundaneum_comment_valid():
     content = """
     % Some random comment
-    @COMMENT{folio:
+    @COMMENT{mundaneum:
         subject = cs-ml-ai,
         topics = transformers | attention | nlp
     }
     @article{...}
     """
-    metadata = parse_folio_comment(content)
+    metadata = parse_mundaneum_comment(content)
     assert metadata["subject"] == "cs-ml-ai"
     assert set(metadata["topics"]) == {"transformers", "attention", "nlp"}
 
 
-def test_parse_folio_comment_empty():
+def test_parse_mundaneum_comment_empty():
     content = "@article{...}"
-    metadata = parse_folio_comment(content)
+    metadata = parse_mundaneum_comment(content)
     assert metadata == {}
 
 

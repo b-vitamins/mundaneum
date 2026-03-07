@@ -1,9 +1,10 @@
 [tool.poetry]
-name = "folio-backend"
+name = "mundaneum-backend"
 version = "0.1.0"
-description = "Folio backend API"
+description = "Mundaneum backend API"
 authors = ["You"]
 readme = "README.md"
+packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -46,4 +47,3 @@ testpaths = ["tests"]
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-

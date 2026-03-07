@@ -1,12 +1,11 @@
 import { ref, watchEffect } from 'vue'
-
-const STORAGE_KEY = 'folio-theme'
+import { STORAGE_KEYS } from '@/constants'
 
 export function useDarkMode() {
     const isDark = ref(false)
 
     // Initialize from localStorage or system preference
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(STORAGE_KEYS.THEME)
     if (stored) {
         isDark.value = stored === 'dark'
     } else {
@@ -20,7 +19,7 @@ export function useDarkMode() {
         } else {
             document.documentElement.removeAttribute('data-theme')
         }
-        localStorage.setItem(STORAGE_KEY, isDark.value ? 'dark' : 'light')
+        localStorage.setItem(STORAGE_KEYS.THEME, isDark.value ? 'dark' : 'light')
     })
 
     const toggle = () => {

@@ -1,5 +1,5 @@
 """
-Collections router for Folio API.
+Collections router for Mundaneum API.
 """
 
 from uuid import UUID

@@ -1,5 +1,5 @@
 """
-Health endpoint tests for Folio API.
+Health endpoint tests for Mundaneum API.
 """
 
 import pytest

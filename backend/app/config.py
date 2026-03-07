@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     # Application
-    app_name: str = "Folio"
+    app_name: str = "Mundaneum"
     debug: bool = False
     log_level: str = "INFO"
 
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # Database
-    database_url: str = "postgresql://folio:folio@localhost:5432/folio"
+    database_url: str = "postgresql://mundaneum:mundaneum@localhost:5432/mundaneum"
     db_pool_size: int = 5
     db_max_overflow: int = 10
     db_pool_timeout: int = 30
@@ -38,8 +38,8 @@ class Settings(BaseSettings):
 
     # MinIO (future use)
     minio_url: str = "localhost:9000"
-    minio_access_key: str = "folio"
-    minio_secret_key: str = "foliopass"
+    minio_access_key: str = "mundaneum"
+    minio_secret_key: str = "mundaneumpass"
 
     # Data directory
     bib_directory: str = "/data"

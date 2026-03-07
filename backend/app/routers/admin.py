@@ -1,5 +1,5 @@
 """
-Admin router for Folio API.
+Admin router for Mundaneum API.
 
 Provides backup/restore, ingest, and health endpoints for administration.
 """

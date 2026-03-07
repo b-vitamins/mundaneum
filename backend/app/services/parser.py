@@ -1,5 +1,5 @@
 """
-BibTeX parser service for Folio.
+BibTeX parser service for Mundaneum.
 
 Scans directories recursively for .bib files and parses entries
 according to the official BibTeX specification.
@@ -305,25 +305,25 @@ def parse_subject_name(slug: str) -> tuple[str, str | None, str]:
     return parent, subarea, subarea
 
 
-def parse_folio_comment(content: str) -> dict[str, str | list[str]]:
+def parse_mundaneum_comment(content: str) -> dict[str, str | list[str]]:
     """
-    Parse @COMMENT{folio: ...} blocks from raw file content.
+    Parse @COMMENT{mundaneum: ...} blocks from raw file content.
 
     Returns dict with keys like 'subject', 'topics'.
     Topics are returned as a list (split by |).
     """
     result: dict[str, str | list[str]] = {}
 
-    # Match @COMMENT{folio: ...} - case insensitive
-    pattern = r"@COMMENT\{folio:\s*([^}]+)\}"
+    # Match @COMMENT{mundaneum: ...} - case insensitive
+    pattern = r"@COMMENT\{mundaneum:\s*([^}]+)\}"
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
 
     if not match:
         return result
 
     # Parse key = value pairs
-    folio_content = match.group(1)
-    for line in folio_content.split("\n"):
+    mundaneum_content = match.group(1)
+    for line in mundaneum_content.split("\n"):
         line = line.strip()
         if "=" in line:
             key, value = line.split("=", 1)
@@ -463,8 +463,8 @@ def parse_bib_file(filepath: Path) -> list[dict]:
         logger.error("Error reading %s: %s", filepath, e)
         return []
 
-    # Parse file-level @COMMENT{folio: ...} metadata
-    file_metadata = parse_folio_comment(raw_content)
+    # Parse file-level @COMMENT{mundaneum: ...} metadata
+    file_metadata = parse_mundaneum_comment(raw_content)
 
     try:
         bib_database = bibtexparser.loads(raw_content, parser=parser)

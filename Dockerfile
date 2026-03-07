@@ -1,4 +1,4 @@
-# Folio - Combined Docker Image
+# Mundaneum - Combined Docker Image
 # Multi-stage build: Node for frontend, Python for backend, nginx + supervisord for runtime
 
 # Stage 1: Build frontend
@@ -46,8 +46,8 @@ COPY --from=frontend-builder /frontend/dist /var/www/html
 
 # Copy config files
 RUN rm -f /etc/nginx/sites-enabled/default
-COPY docker/nginx.conf /etc/nginx/conf.d/folio.conf
-COPY docker/supervisord.conf /etc/supervisor/conf.d/folio.conf
+COPY docker/nginx.conf /etc/nginx/conf.d/mundaneum.conf
+COPY docker/supervisord.conf /etc/supervisor/conf.d/mundaneum.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

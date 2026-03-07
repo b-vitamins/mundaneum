@@ -20,9 +20,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: folio
+          POSTGRES_USER: mundaneum
           POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: folio_test
+          POSTGRES_DB: mundaneum_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -59,7 +59,7 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          DATABASE_URL: postgresql://folio:testpass@localhost:5432/folio_test
+          DATABASE_URL: postgresql://mundaneum:testpass@localhost:5432/mundaneum_test
           MEILI_URL: http://localhost:7700
         run: poetry run pytest -v
 
