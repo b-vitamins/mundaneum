@@ -9,7 +9,7 @@ from pathlib import Path
 from app.config import settings
 from app.exceptions import MundaneumError
 from app.runtime import AppRuntime
-from app.runtime import BibliographyIngestJob
+from app.runtime_components import BibliographyIngestJob
 
 
 def _get_ingest_job(runtime: AppRuntime) -> BibliographyIngestJob:

@@ -30,15 +30,22 @@ class HealthContributor:
 class SystemHealthReport:
     """Normalized health state shared by public and admin endpoints."""
 
-    database_available: bool
-    search_available: bool
+    services: dict[str, bool]
     bibliography_configured: bool
     bibliography_files_count: int
 
+    @property
+    def database_available(self) -> bool:
+        return self.services.get("database", False)
+
+    @property
+    def search_available(self) -> bool:
+        return self.services.get("search", False)
+
     def public_status(self) -> str:
-        if self.database_available and self.search_available:
+        if self.services and all(self.services.values()):
             return "ok"
-        if self.database_available:
+        if any(self.services.values()):
             return "degraded"
         return "unhealthy"
 
@@ -54,8 +61,8 @@ class SystemHealthReport:
             "status": self.public_status(),
             "version": VERSION,
             "services": {
-                "database": "ok" if self.database_available else "unavailable",
-                "search": "ok" if self.search_available else "unavailable",
+                name: "ok" if available else "unavailable"
+                for name, available in self.services.items()
             },
         }
 
@@ -82,15 +89,16 @@ class SystemHealthService:
         self._bibliography_path = bibliography_path or Path(settings.bib_directory)
 
     async def get_report(self) -> SystemHealthReport:
-        db_ok = await self._contributors["database"].check()
-        search_ok = await self._contributors["search"].check()
+        service_statuses = {
+            name: await contributor.check()
+            for name, contributor in self._contributors.items()
+        }
 
         bib_exists = self._bibliography_path.exists() and self._bibliography_path.is_dir()
         bib_count = len(list(self._bibliography_path.glob("**/*.bib"))) if bib_exists else 0
 
         return SystemHealthReport(
-            database_available=db_ok,
-            search_available=search_ok,
+            services=service_statuses,
             bibliography_configured=bib_exists,
             bibliography_files_count=bib_count,
         )
