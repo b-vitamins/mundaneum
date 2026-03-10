@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from app.services.s2_protocol import EdgeRecord, PaperRecord, S2DataSource
 
 if TYPE_CHECKING:
-    from app.services.s2 import S2Transport
+    from app.services.s2_transport import S2Transport
 
 logger = logging.getLogger(__name__)
 

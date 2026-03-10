@@ -54,8 +54,10 @@ class S2Runtime:
 
 def build_s2_runtime() -> S2Runtime:
     """Build a fully wired S2 runtime with shared transport/source state."""
-    from app.services.s2 import S2Transport, SyncOrchestrator, _default_resolvers
     from app.services.s2_corpus import ChainedSource, LiveAPI, LocalCorpus
+    from app.services.s2_resolvers import default_resolvers
+    from app.services.s2_sync import create_sync_orchestrator
+    from app.services.s2_transport import S2Transport
 
     transport = S2Transport(
         api_key=settings.s2_api_key,
@@ -80,11 +82,11 @@ def build_s2_runtime() -> S2Runtime:
     sources.append(live_api)
     data_source = ChainedSource(sources)
 
-    orchestrator = SyncOrchestrator(
-        transport=transport,
-        resolvers=_default_resolvers(),
+    orchestrator = create_sync_orchestrator(
         source=data_source,
         sync_registry=SyncRegistry(),
+        transport=transport,
+        resolvers=default_resolvers(),
     )
 
     return S2Runtime(

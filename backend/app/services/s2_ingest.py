@@ -10,8 +10,8 @@ from app.services.s2_ingest_config import (
     ALL_DATASETS,
     CORE_DATASETS,
     S2_DATASETS_API,
-    URL_REFRESH_INTERVAL as _URL_REFRESH_INTERVAL,
-    load_settings as _load_settings,
+    URL_REFRESH_INTERVAL,
+    load_settings,
 )
 from app.services.s2_ingest_download import (
     download_dataset,
@@ -21,15 +21,22 @@ from app.services.s2_ingest_download import (
 )
 from app.services.s2_ingest_duckdb import (
     build_indexes,
-    find_shards as _find_shards,
+    find_shards,
     get_status,
     ingest_dataset,
 )
+
+_URL_REFRESH_INTERVAL = URL_REFRESH_INTERVAL
+_find_shards = find_shards
+_load_settings = load_settings
 
 __all__ = [
     "ALL_DATASETS",
     "CORE_DATASETS",
     "S2_DATASETS_API",
+    "URL_REFRESH_INTERVAL",
+    "find_shards",
+    "load_settings",
     "_URL_REFRESH_INTERVAL",
     "_find_shards",
     "_load_settings",
