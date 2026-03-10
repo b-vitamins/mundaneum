@@ -21,6 +21,27 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.services.s2_protocol import EdgeRecord, PaperRecord, S2DataSource
+from app.services.s2_corpus_mapping import (
+    api_dict_to_paper,
+    citation_edges_from_rows,
+    enrich_paper_record,
+    paper_record_from_row,
+    reference_edges_from_rows,
+)
+from app.services.s2_corpus_queries import (
+    abstract_row_query,
+    author_rows_query,
+    batch_primary_sha_query,
+    citations_query,
+    external_id_query,
+    paper_row_query,
+    primary_corpus_id_query,
+    primary_sha_query,
+    reference_ids_query,
+    references_query,
+    tldr_row_query,
+)
+from app.services.s2_source_registry import SourceRegistry
 
 if TYPE_CHECKING:
     from app.services.s2_transport import S2Transport
@@ -74,10 +95,7 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            row = conn.execute(
-                "SELECT corpusid FROM paper_ids WHERE sha = ? AND is_primary = true LIMIT 1",
-                [s2_id],
-            ).fetchone()
+            row = primary_corpus_id_query(s2_id).fetchone(conn)
             return row[0] if row else None
         except Exception:
             return None
@@ -88,17 +106,7 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            # Use reverse-sorted table for fast zone-map lookups
-            try:
-                row = conn.execute(
-                    "SELECT sha FROM paper_ids_by_corpus WHERE corpusid = ? AND is_primary = true LIMIT 1",
-                    [corpus_id],
-                ).fetchone()
-            except Exception:
-                row = conn.execute(
-                    "SELECT sha FROM paper_ids WHERE corpusid = ? AND is_primary = true LIMIT 1",
-                    [corpus_id],
-                ).fetchone()
+            row = primary_sha_query(corpus_id).fetchone(conn)
             return row[0] if row else None
         except Exception:
             return None
@@ -120,41 +128,15 @@ class LocalCorpus:
         try:
             for i in range(0, len(corpus_ids), chunk_size):
                 chunk = corpus_ids[i : i + chunk_size]
-                placeholders = ",".join("?" for _ in chunk)
-                try:
-                    rows = conn.execute(
-                        f"SELECT corpusid, sha FROM paper_ids_by_corpus "
-                        f"WHERE corpusid IN ({placeholders}) AND is_primary = true",
-                        chunk,
-                    ).fetchall()
-                except Exception:
-                    rows = conn.execute(
-                        f"SELECT corpusid, sha FROM paper_ids "
-                        f"WHERE corpusid IN ({placeholders}) AND is_primary = true",
-                        chunk,
-                    ).fetchall()
+                query = batch_primary_sha_query(chunk)
+                if query is None:
+                    continue
+                rows = query.fetchall(conn)
                 for cid, sha in rows:
                     result[cid] = sha
         except Exception as e:
             logger.warning("_batch_corpus_id_to_sha: %s", e)
         return result
-
-    def _row_to_paper(self, row: tuple, corpus_id: int) -> PaperRecord:
-        """Convert a DuckDB row to PaperRecord."""
-        # row: (title, year, venue, citationcount, referencecount,
-        #        influentialcitationcount, isopenaccess, publicationdate)
-        s2_id = self._corpus_id_to_sha(corpus_id)
-        return PaperRecord(
-            corpus_id=corpus_id,
-            s2_id=s2_id,
-            title=row[0] or "",
-            year=row[1],
-            venue=row[2],
-            citation_count=row[3] or 0,
-            reference_count=row[4] or 0,
-            influential_citation_count=row[5] or 0,
-            is_open_access=bool(row[6]),
-        )
 
     async def get_paper(self, s2_id: str) -> PaperRecord | None:
         return await asyncio.to_thread(self._sync_get_paper, s2_id)
@@ -173,44 +155,19 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            row = conn.execute(
-                """SELECT title, year, venue, citationcount, referencecount,
-                          influentialcitationcount, isopenaccess, publicationdate
-                   FROM papers WHERE corpusid = ?""",
-                [corpus_id],
-            ).fetchone()
+            row = paper_row_query(corpus_id).fetchone(conn)
             if not row:
                 return None
-            paper = self._row_to_paper(row, corpus_id)
-
-            # Enrich with abstract and TLDR if available
-            abstract_row = conn.execute(
-                "SELECT abstract FROM abstracts WHERE corpusid = ?", [corpus_id]
-            ).fetchone()
-            tldr_row = conn.execute(
-                "SELECT text FROM tldrs WHERE corpusid = ?", [corpus_id]
-            ).fetchone()
-
-            # Enrich with authors
-            author_rows = conn.execute(
-                "SELECT authorid, name FROM paper_authors WHERE corpusid = ? ORDER BY position",
-                [corpus_id],
-            ).fetchall()
-
-            # Build enriched record (frozen dataclass — create new one)
-            return PaperRecord(
-                corpus_id=paper.corpus_id,
-                s2_id=paper.s2_id,
-                title=paper.title,
-                year=paper.year,
-                venue=paper.venue,
-                authors=[{"authorId": r[0], "name": r[1]} for r in author_rows],
-                abstract=abstract_row[0] if abstract_row else None,
-                tldr=tldr_row[0] if tldr_row else None,
-                citation_count=paper.citation_count,
-                reference_count=paper.reference_count,
-                influential_citation_count=paper.influential_citation_count,
-                is_open_access=paper.is_open_access,
+            paper = paper_record_from_row(
+                row,
+                corpus_id=corpus_id,
+                s2_id=self._corpus_id_to_sha(corpus_id),
+            )
+            return enrich_paper_record(
+                paper,
+                abstract_row=abstract_row_query(corpus_id).fetchone(conn),
+                tldr_row=tldr_row_query(corpus_id).fetchone(conn),
+                author_rows=author_rows_query(corpus_id).fetchall(conn),
             )
         except Exception as e:
             logger.warning("LocalCorpus.get_paper_by_corpus_id(%d): %s", corpus_id, e)
@@ -234,29 +191,17 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            query = """SELECT citedcorpusid, isinfluential
-                       FROM citations WHERE citingcorpusid = ?"""
-            # Prioritize influential citations when limiting
-            if limit is not None:
-                query += " ORDER BY isinfluential DESC"
-                query += f" LIMIT {int(limit)}"
-            rows = conn.execute(query, [corpus_id]).fetchall()
+            rows = references_query(corpus_id, limit=limit).fetchall(conn)
 
             # Batch reverse-lookup: corpus_id → sha
             cited_ids = [r[0] for r in rows if r[0] is not None]
             sha_map = self._batch_corpus_id_to_sha(cited_ids)
-
-            return [
-                EdgeRecord(
-                    citing_corpus_id=corpus_id,
-                    cited_corpus_id=r[0],
-                    citing_s2_id=s2_id,
-                    cited_s2_id=sha_map.get(r[0]),
-                    is_influential=bool(r[1]),
-                )
-                for r in rows
-                if r[0] is not None and sha_map.get(r[0]) is not None
-            ]
+            return reference_edges_from_rows(
+                rows,
+                citing_corpus_id=corpus_id,
+                citing_s2_id=s2_id,
+                sha_map=sha_map,
+            )
         except Exception as e:
             logger.warning("LocalCorpus.get_references(%s): %s", s2_id, e)
             return None
@@ -279,38 +224,17 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            # Use reverse-sorted table for fast zone-map lookups.
-            # Falls back to original citations table if not yet optimized.
-            try:
-                query = """SELECT citingcorpusid, isinfluential
-                           FROM citations_by_cited WHERE citedcorpusid = ?"""
-                if limit is not None:
-                    query += " ORDER BY isinfluential DESC"
-                    query += f" LIMIT {int(limit)}"
-                rows = conn.execute(query, [corpus_id]).fetchall()
-            except Exception:
-                query = """SELECT citingcorpusid, isinfluential
-                           FROM citations WHERE citedcorpusid = ?"""
-                if limit is not None:
-                    query += " ORDER BY isinfluential DESC"
-                    query += f" LIMIT {int(limit)}"
-                rows = conn.execute(query, [corpus_id]).fetchall()
+            rows = citations_query(corpus_id, limit=limit).fetchall(conn)
 
             # Batch reverse-lookup: corpus_id → sha
             citing_ids = [r[0] for r in rows if r[0] is not None]
             sha_map = self._batch_corpus_id_to_sha(citing_ids)
-
-            return [
-                EdgeRecord(
-                    citing_corpus_id=r[0],
-                    cited_corpus_id=corpus_id,
-                    citing_s2_id=sha_map.get(r[0]),
-                    cited_s2_id=s2_id,
-                    is_influential=bool(r[1]),
-                )
-                for r in rows
-                if r[0] is not None and sha_map.get(r[0]) is not None
-            ]
+            return citation_edges_from_rows(
+                rows,
+                cited_corpus_id=corpus_id,
+                cited_s2_id=s2_id,
+                sha_map=sha_map,
+            )
         except Exception as e:
             logger.warning("LocalCorpus.get_citations(%s): %s", s2_id, e)
             return None
@@ -323,12 +247,7 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            row = conn.execute(
-                """SELECT pi.sha FROM paper_external_ids ei
-                   JOIN paper_ids pi ON ei.corpusid = pi.corpusid AND pi.is_primary = true
-                   WHERE ei.source = ? AND ei.id = ? LIMIT 1""",
-                [id_type, identifier],
-            ).fetchone()
+            row = external_id_query(id_type, identifier).fetchone(conn)
             return row[0] if row else None
         except Exception as e:
             logger.warning("LocalCorpus.resolve_id(%s, %s): %s", id_type, identifier, e)
@@ -350,13 +269,7 @@ class LocalCorpus:
         if conn is None:
             return None
         try:
-            rows = conn.execute(
-                """SELECT pi.sha
-                   FROM citations c
-                   JOIN paper_ids pi ON c.citedcorpusid = pi.corpusid AND pi.is_primary = true
-                   WHERE c.citingcorpusid = ?""",
-                [corpus_id],
-            ).fetchall()
+            rows = reference_ids_query(corpus_id).fetchall(conn)
             return {r[0] for r in rows}
         except Exception as e:
             logger.warning("LocalCorpus.get_reference_ids(%s): %s", s2_id, e)
@@ -391,7 +304,7 @@ class LiveAPI:
         )
         if not data:
             return None
-        return _api_dict_to_paper(data)
+        return api_dict_to_paper(data)
 
     async def get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
         data = await self._transport.get(
@@ -399,7 +312,7 @@ class LiveAPI:
         )
         if not data:
             return None
-        return _api_dict_to_paper(data)
+        return api_dict_to_paper(data)
 
     async def get_references(
         self,
@@ -476,7 +389,7 @@ class LiveAPI:
         if not data:
             return None
         if isinstance(data, list):
-            return [_api_dict_to_paper(d) for d in data]
+            return [api_dict_to_paper(d) for d in data]
         return None
 
     async def get_reference_ids(self, s2_id: str) -> set[str] | None:
@@ -484,42 +397,6 @@ class LiveAPI:
         if refs is None:
             return None
         return {e.cited_s2_id for e in refs if e.cited_s2_id}
-
-
-def _api_dict_to_paper(data: dict) -> PaperRecord:
-    """Convert an S2 API response dict to a PaperRecord."""
-    tldr = data.get("tldr")
-    tldr_text = tldr.get("text") if isinstance(tldr, dict) else None
-
-    oa_pdf = data.get("openAccessPdf")
-    oa_url = oa_pdf.get("url") if isinstance(oa_pdf, dict) else None
-
-    authors = data.get("authors") or []
-
-    fos = data.get("fieldsOfStudy") or data.get("s2FieldsOfStudy") or []
-    if fos and isinstance(fos[0], dict):
-        fos = [f.get("category", "") for f in fos]
-
-    return PaperRecord(
-        s2_id=data.get("paperId"),
-        title=data.get("title", ""),
-        year=data.get("year"),
-        venue=data.get("venue"),
-        authors=[
-            {"authorId": a.get("authorId"), "name": a.get("name")} for a in authors
-        ],
-        abstract=data.get("abstract"),
-        tldr=tldr_text,
-        citation_count=data.get("citationCount", 0),
-        reference_count=data.get("referenceCount", 0),
-        influential_citation_count=data.get("influentialCitationCount", 0),
-        is_open_access=data.get("isOpenAccess", False),
-        open_access_pdf_url=oa_url,
-        fields_of_study=fos,
-        publication_types=data.get("publicationTypes") or [],
-        external_ids=data.get("externalIds") or {},
-    )
-
 
 # ──────────────────────────────────────────────────────────
 # ChainedSource — the combinator
@@ -538,21 +415,18 @@ class ChainedSource:
         self,
         sources: list[S2DataSource],
     ):
-        self._sources = sources
+        self._registry = SourceRegistry(sources)
+
+    async def _resolve(self, operation):
+        return await self._registry.first_result(operation)
 
     async def get_paper(self, s2_id: str) -> PaperRecord | None:
-        for source in self._sources:
-            result = await source.get_paper(s2_id)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(lambda source: source.get_paper(s2_id))
 
     async def get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
-        for source in self._sources:
-            result = await source.get_paper_by_corpus_id(corpus_id)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(
+            lambda source: source.get_paper_by_corpus_id(corpus_id)
+        )
 
     async def get_references(
         self,
@@ -560,11 +434,9 @@ class ChainedSource:
         *,
         limit: int | None = None,
     ) -> list[EdgeRecord] | None:
-        for source in self._sources:
-            result = await source.get_references(s2_id, limit=limit)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(
+            lambda source: source.get_references(s2_id, limit=limit)
+        )
 
     async def get_citations(
         self,
@@ -572,32 +444,20 @@ class ChainedSource:
         *,
         limit: int | None = None,
     ) -> list[EdgeRecord] | None:
-        for source in self._sources:
-            result = await source.get_citations(s2_id, limit=limit)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(
+            lambda source: source.get_citations(s2_id, limit=limit)
+        )
 
     async def resolve_id(self, id_type: str, identifier: str) -> str | None:
-        for source in self._sources:
-            result = await source.resolve_id(id_type, identifier)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(
+            lambda source: source.resolve_id(id_type, identifier)
+        )
 
     async def search(self, query: str, limit: int = 10) -> list[PaperRecord] | None:
-        for source in self._sources:
-            result = await source.search(query, limit=limit)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(lambda source: source.search(query, limit=limit))
 
     async def get_reference_ids(self, s2_id: str) -> set[str] | None:
-        for source in self._sources:
-            result = await source.get_reference_ids(s2_id)
-            if result is not None:
-                return result
-        return None
+        return await self._resolve(lambda source: source.get_reference_ids(s2_id))
 
 
 def get_local_source() -> LocalCorpus | None:
