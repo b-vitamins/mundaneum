@@ -6,7 +6,14 @@ import pytest
 from meilisearch.errors import MeilisearchCommunicationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.schemas.search import SearchResponse, SearchSource, SearchStatus
+from app.schemas.search import (
+    SearchResponse,
+    SearchSort,
+    SearchSortField,
+    SearchSortOrder,
+    SearchSource,
+    SearchStatus,
+)
 from app.services import search_service
 
 
@@ -110,3 +117,26 @@ async def test_search_reports_unavailable_when_all_backends_fail(client, monkeyp
     assert data["status"] == "unavailable"
     assert data["source"] == "none"
     assert data["hits"] == []
+
+
+def test_search_sort_defaults_to_created_at_desc():
+    """Search sort should have a stable default policy."""
+    sort = SearchSort.from_raw(None)
+    assert sort.field == SearchSortField.CREATED_AT
+    assert sort.order == SearchSortOrder.DESC
+    assert sort.meilisearch_value == "created_at:desc"
+
+
+def test_search_sort_parses_supported_field_and_order():
+    """Search sort should normalize valid sort strings."""
+    sort = SearchSort.from_raw("year:asc")
+    assert sort.field == SearchSortField.YEAR
+    assert sort.order == SearchSortOrder.ASC
+    assert sort.meilisearch_value == "year:asc"
+
+
+def test_search_sort_falls_back_for_unknown_values():
+    """Unsupported sort parts should degrade to the default search policy."""
+    sort = SearchSort.from_raw("citations:up")
+    assert sort.field == SearchSortField.CREATED_AT
+    assert sort.order == SearchSortOrder.DESC

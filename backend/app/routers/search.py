@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import EntryType
-from app.schemas.search import SearchFilters, SearchQuery, SearchResponse
+from app.schemas.search import SearchFilters, SearchQuery, SearchResponse, SearchSort
 from app.services.search_service import search_entries as execute_search
 
 router = APIRouter(prefix="", tags=["search"])
@@ -40,6 +40,6 @@ async def search_entries(
         ),
         limit=limit,
         offset=offset,
-        sort=sort,
+        sort=SearchSort.from_raw(sort),
     )
     return await execute_search(db, query)

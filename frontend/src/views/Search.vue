@@ -13,6 +13,32 @@ import AppShell from '@/components/AppShell.vue'
 const route = useRoute()
 const router = useRouter()
 
+type TernaryFilter = '' | 'true' | 'false'
+
+interface SearchFilterForm {
+  entry_type: string
+  year_from: number | null
+  year_to: number | null
+  has_pdf: TernaryFilter
+  read: TernaryFilter
+}
+
+function defaultFilters(): SearchFilterForm {
+  return {
+    entry_type: '',
+    year_from: null,
+    year_to: null,
+    has_pdf: '',
+    read: '',
+  }
+}
+
+function parseTernaryFilter(value: TernaryFilter): boolean | undefined {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
+}
+
 const query = ref(route.query.q as string || '')
 const results = ref<SearchHit[]>([])
 const total = ref(0)
@@ -22,7 +48,7 @@ const status = ref<SearchStatus>('ok')
 const warnings = ref<SearchWarning[]>([])
 
 const showFilters = ref(false)
-const filters = ref<SearchFilters>({})
+const filters = ref<SearchFilterForm>(defaultFilters())
 const entryTypes = ['article', 'book', 'inproceedings', 'phdthesis', 'techreport', 'misc']
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -41,9 +67,14 @@ async function search() {
   try {
     const activeFilters: SearchFilters = {}
     if (filters.value.entry_type) activeFilters.entry_type = filters.value.entry_type
-    if (filters.value.year_from) activeFilters.year_from = filters.value.year_from
-    if (filters.value.year_to) activeFilters.year_to = filters.value.year_to
-    if (filters.value.read) activeFilters.read = filters.value.read
+    if (filters.value.year_from !== null) activeFilters.year_from = filters.value.year_from
+    if (filters.value.year_to !== null) activeFilters.year_to = filters.value.year_to
+
+    const hasPdf = parseTernaryFilter(filters.value.has_pdf)
+    if (hasPdf !== undefined) activeFilters.has_pdf = hasPdf
+
+    const read = parseTernaryFilter(filters.value.read)
+    if (read !== undefined) activeFilters.read = read
 
     const data = await api.search(query.value, activeFilters)
     status.value = data.status
@@ -83,7 +114,7 @@ function handleSearch() {
 }
 
 function clearFilters() {
-  filters.value = {}
+  filters.value = defaultFilters()
   search()
 }
 
@@ -137,15 +168,26 @@ const unavailableDetail = computed(() => {
         </div>
 
         <div class="filter-group">
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="filters.read" />
-            Read only
-          </label>
+          <label class="filter-label">PDF</label>
+          <select v-model="filters.has_pdf" class="filter-control input">
+            <option value="">Any</option>
+            <option value="true">Attached</option>
+            <option value="false">Missing</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Read status</label>
+          <select v-model="filters.read" class="filter-control input">
+            <option value="">Any</option>
+            <option value="true">Read</option>
+            <option value="false">Unread</option>
+          </select>
         </div>
 
         <div class="filter-actions">
-          <button class="btn btn-primary" @click="search">Apply</button>
-          <button class="btn btn-ghost" @click="clearFilters">Clear</button>
+          <button type="button" class="btn btn-primary" @click="search">Apply</button>
+          <button type="button" class="btn btn-ghost" @click="clearFilters">Clear</button>
         </div>
       </aside>
 
@@ -262,15 +304,6 @@ const unavailableDetail = computed(() => {
 }
 .year-sep {
   color: var(--text-muted);
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
 }
 
 .status.warning {

@@ -13,12 +13,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.logging import get_logger
 from app.models import Author, Entry, EntryAuthor
-from app.routers.entity_common import apply_sort, paginate
 from app.schemas.search import (
+    SearchHitResponse,
     SearchQuery,
     SearchResponse,
+    SearchSort,
+    SearchSortField,
+    SearchSortOrder,
     SearchSource,
-    SearchStatus,
     SearchWarning,
 )
 from app.services.entry_queries import ENTRY_SORT_COLUMNS, entry_load_options
@@ -35,6 +37,11 @@ UNAVAILABLE_WARNING: Final[SearchWarning] = SearchWarning(
     code="search_unavailable",
     message="Search is temporarily unavailable.",
 )
+SEARCH_SORT_COLUMNS: Final = {
+    SearchSortField.CREATED_AT: ENTRY_SORT_COLUMNS["created_at"],
+    SearchSortField.YEAR: ENTRY_SORT_COLUMNS["year"],
+    SearchSortField.TITLE: ENTRY_SORT_COLUMNS["title"],
+}
 
 
 def _build_meili_filter(query: SearchQuery) -> str | None:
@@ -63,13 +70,16 @@ def execute_meilisearch(query: SearchQuery) -> SearchResponse:
             "limit": query.limit,
             "offset": query.offset,
             "filter": _build_meili_filter(query),
-            **({"sort": [query.sort]} if query.sort else {}),
+            "sort": [query.sort.meilisearch_value],
         },
     )
-    return SearchResponse(
-        status=SearchStatus.OK,
+    hits = [
+        SearchHitResponse.model_validate(hit)
+        for hit in result.get("hits", [])
+    ]
+    return SearchResponse.ok(
         source=SearchSource.MEILISEARCH,
-        hits=result.get("hits", []),
+        hits=hits,
         total=result.get("estimatedTotalHits", 0),
         processing_time_ms=result.get("processingTimeMs", 0),
     )
@@ -107,23 +117,19 @@ def _apply_database_query(statement: Select, query: SearchQuery) -> Select:
     )
 
 
-def _apply_database_sort(statement: Select, sort: str | None) -> Select:
-    if not sort:
-        return apply_sort(
-            statement,
-            sort_by="created_at",
-            sort_order="desc",
-            sort_columns=ENTRY_SORT_COLUMNS,
-        )
-
-    sort_by, _, sort_order = sort.partition(":")
-    normalized_order = sort_order or "asc"
-    return apply_sort(
-        statement,
-        sort_by=sort_by,
-        sort_order=normalized_order,
-        sort_columns=ENTRY_SORT_COLUMNS,
+def _apply_database_sort(statement: Select, sort: SearchSort) -> Select:
+    order_column = SEARCH_SORT_COLUMNS[sort.field]
+    ordering = (
+        order_column.desc().nullslast()
+        if sort.order == SearchSortOrder.DESC
+        else order_column.asc().nullsfirst()
     )
+    return statement.order_by(ordering)
+
+
+def _paginate(statement: Select, query: SearchQuery) -> Select:
+    bounded_limit = min(query.limit, 100)
+    return statement.offset(query.offset).limit(bounded_limit)
 
 
 async def execute_database_search(
@@ -143,22 +149,15 @@ async def execute_database_search(
 
     total = await db.scalar(select(func.count()).select_from(base_ids.subquery()))
     ordered_ids_query = _apply_database_sort(base_ids, query.sort)
-    ordered_ids_query = paginate(
-        ordered_ids_query,
-        limit=query.limit,
-        offset=query.offset,
-        max_limit=100,
-    )
+    ordered_ids_query = _paginate(ordered_ids_query, query)
 
     id_rows = await db.execute(ordered_ids_query)
     entry_ids = list(id_rows.scalars().all())
     if not entry_ids:
-        return SearchResponse(
-            status=SearchStatus.PARTIAL,
+        return SearchResponse.partial(
             source=SearchSource.DATABASE,
             hits=[],
             total=total or 0,
-            processing_time_ms=0,
         )
 
     entries_result = await db.execute(
@@ -170,12 +169,10 @@ async def execute_database_search(
         for entry_id in entry_ids
         if entry_id in entries_by_id
     ]
-    return SearchResponse(
-        status=SearchStatus.PARTIAL,
+    return SearchResponse.partial(
         source=SearchSource.DATABASE,
         hits=[serialize_search_hit(entry) for entry in ordered_entries],
         total=total or 0,
-        processing_time_ms=0,
     )
 
 
@@ -191,12 +188,7 @@ async def search_entries(db: AsyncSession, query: SearchQuery) -> SearchResponse
         return degraded.model_copy(update={"warnings": [MEILI_WARNING]})
     except SQLAlchemyError as exc:
         logger.exception("Database fallback search failed: %s", exc)
-        return SearchResponse(
-            status=SearchStatus.UNAVAILABLE,
-            source=SearchSource.NONE,
-            hits=[],
-            total=0,
-            processing_time_ms=0,
+        return SearchResponse.unavailable(
             warnings=[
                 MEILI_WARNING,
                 UNAVAILABLE_WARNING,
