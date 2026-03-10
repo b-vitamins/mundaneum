@@ -6,6 +6,10 @@ authors = ["You"]
 readme = "README.md"
 packages = [{ include = "app" }]
 
+[tool.poetry.scripts]
+mundaneum-import-bibtex = "app.cli.import_bibtex:run"
+mundaneum-sync-meilisearch = "app.cli.sync_meilisearch:run"
+
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.109.0"
@@ -43,6 +47,9 @@ known-first-party = ["app"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:The event_loop fixture provided by pytest-asyncio has been redefined:DeprecationWarning",
+]
 
 [build-system]
 requires = ["poetry-core"]
