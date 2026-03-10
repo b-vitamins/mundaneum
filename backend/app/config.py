@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     s2_max_edges: int = 500
     s2_staleness_days: int = 7
     s2_rate_limit: float = 0.9  # reqs/sec without key (with key: auto 10.0)
+    s2_backfill_batch_size: int = 10
+    s2_backfill_initial_delay_seconds: int = 30
+    s2_backfill_idle_delay_seconds: int = 300
+    s2_backfill_batch_delay_seconds: int = 5
+    s2_backfill_error_delay_seconds: int = 60
 
     # S2 corpus pipeline (local dataset cache)
     s2_corpus_path: str = "/data/s2/corpus.duckdb"

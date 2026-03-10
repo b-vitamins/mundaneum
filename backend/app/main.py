@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import VERSION, settings
-from app.database import check_db_health, engine, get_db
+from app.database import get_db
 from app.exceptions import MundaneumError
 from app.logging import get_logger, setup_logging
 from app.middleware import RequestIDMiddleware
@@ -28,83 +28,33 @@ from app.routers import (
     topics,
     venues,
 )
-from app.services.sync import is_available as meili_available
-from app.services.worker import worker as ingestion_worker
-from app.services.s2_runtime import get_s2_runtime
+from app.runtime import build_app_runtime
 
 logger = get_logger(__name__)
-
-# Default bibliography path inside container
-BIBLIOGRAPHY_PATH = "/bibliography"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle manager."""
-    import asyncio
-
     setup_logging()
     logger.info("Starting Mundaneum v%s", VERSION)
+    runtime = app.state.runtime
 
-    # Startup validation
-    db_ok = await check_db_health()
-    meili_ok = meili_available()
+    report = await runtime.health.get_report()
 
-    if not db_ok:
+    if not report.database_available:
         logger.error(
             "Database is not available - application may not function correctly"
         )
-    if not meili_ok:
+    if not report.search_available:
         logger.warning("Meilisearch is not available - search will be degraded")
 
-    # Start background ingestion if bibliography directory exists
-    from pathlib import Path
-
-    bib_dir = Path(BIBLIOGRAPHY_PATH)
-    if bib_dir.exists() and bib_dir.is_dir():
-        logger.info("Bibliography directory found, starting background ingestion")
-        await ingestion_worker.start(bib_dir)
-    else:
-        logger.info(
-            "No bibliography directory at %s, skipping auto-ingest", BIBLIOGRAPHY_PATH
-        )
-
-    # Start S2 backfill loop (resolves unsynced entries in background)
-    s2_runtime = get_s2_runtime()
-
-    async def _s2_backfill_loop():
-        # Wait for ingestion to settle before starting backfill
-        await asyncio.sleep(30)
-        orchestrator = s2_runtime.orchestrator
-        logger.info("S2 backfill loop started")
-
-        while True:
-            try:
-                resolved = await orchestrator.backfill(batch_size=10)
-                if resolved == 0:
-                    await asyncio.sleep(300)  # Check every 5 min when idle
-                else:
-                    await asyncio.sleep(5)  # Brief pause between batches
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("S2 backfill error: %s", e)
-                await asyncio.sleep(60)
-
-    backfill_task = asyncio.create_task(_s2_backfill_loop())
+    await runtime.start()
 
     yield
 
-    # Shutdown
     logger.info("Shutting down Mundaneum")
-    backfill_task.cancel()
-    try:
-        await backfill_task
-    except asyncio.CancelledError:
-        pass
-    await s2_runtime.close()
-    await ingestion_worker.stop()
-    await engine.dispose()
+    await runtime.stop()
 
 
 app = FastAPI(
@@ -116,6 +66,7 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+app.state.runtime = build_app_runtime()
 
 # CORS middleware
 app.add_middleware(
@@ -163,26 +114,9 @@ app.include_router(topics.router, prefix="/api")
 
 
 @app.get("/health")
-async def health():
+async def health(request: Request):
     """Health check endpoint."""
-    db_ok = await check_db_health()
-    meili_ok = meili_available()
-
-    if db_ok and meili_ok:
-        status = "ok"
-    elif db_ok:
-        status = "degraded"
-    else:
-        status = "unhealthy"
-
-    return {
-        "status": status,
-        "version": VERSION,
-        "services": {
-            "database": "ok" if db_ok else "unavailable",
-            "search": "ok" if meili_ok else "unavailable",
-        },
-    }
+    return (await request.app.state.runtime.health.get_report()).public_payload()
 
 
 @app.get("/api/stats")

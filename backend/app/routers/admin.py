@@ -5,10 +5,9 @@ Provides backup/restore, ingest, and health endpoints for administration.
 """
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -16,10 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.database import check_db_health, get_db
+from app.database import get_db
 from app.logging import get_logger
 from app.models import Collection, CollectionEntry, Entry
-from app.services.sync import is_available as meili_available
+from app.services.worker import worker
 
 logger = get_logger(__name__)
 
@@ -258,8 +257,6 @@ async def get_ingest_status():
 
     Returns progress information for background ingestion.
     """
-    from app.services.worker import worker
-
     return worker.get_status()
 
 
@@ -272,12 +269,12 @@ async def start_ingest(
 
     If already running, returns current status without restarting.
     """
-    from app.services.worker import worker
-
     if worker.is_running:
         return {"message": "Ingestion already running", **worker.get_status()}
 
-    directory = request.directory or "/bibliography"
+    from pathlib import Path
+
+    directory = request.directory or settings.bib_directory
     path = Path(directory)
 
     if not path.exists() or not path.is_dir():
@@ -298,30 +295,9 @@ async def start_ingest(
 
 
 @router.get("/health", response_model=HealthResponse)
-async def detailed_health():
+async def detailed_health(request: Request):
     """
     Detailed health check for admin dashboard.
     """
-    db_ok = await check_db_health()
-    meili_ok = meili_available()
-
-    # Check BibTeX directory (optional - not having one doesn't affect core functionality)
-    bib_dir = Path(settings.bib_directory)
-    bib_exists = bib_dir.exists() and bib_dir.is_dir()
-    bib_count = len(list(bib_dir.glob("**/*.bib"))) if bib_exists else 0
-
-    # Status based on core services only (db and search)
-    if db_ok and meili_ok:
-        status = "healthy"
-    elif db_ok:
-        status = "degraded"
-    else:
-        status = "unhealthy"
-
-    return HealthResponse(
-        status=status,
-        database="ok" if db_ok else "unavailable",
-        search="ok" if meili_ok else "unavailable",
-        bib_directory="ok" if bib_exists else "not configured",
-        bib_files_count=bib_count,
-    )
+    report = await request.app.state.runtime.health.get_report()
+    return HealthResponse(**report.admin_payload())
