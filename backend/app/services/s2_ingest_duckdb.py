@@ -9,164 +9,13 @@ import logging
 import time
 from pathlib import Path
 
+from app.services.s2_ingest_specs import (
+    CREATE_TABLES_SQL,
+    DATASET_SPECS,
+    SORT_OPTIMIZATIONS,
+)
+
 logger = logging.getLogger(__name__)
-
-
-CREATE_TABLES_SQL = """
--- Papers (200M rows)
-CREATE TABLE IF NOT EXISTS papers (
-    corpusid       INTEGER PRIMARY KEY,
-    title          VARCHAR,
-    year           SMALLINT,
-    venue          VARCHAR,
-    citationcount  INTEGER DEFAULT 0,
-    referencecount INTEGER DEFAULT 0,
-    influentialcitationcount INTEGER DEFAULT 0,
-    isopenaccess   BOOLEAN DEFAULT FALSE,
-    publicationdate VARCHAR,
-    publicationvenueid VARCHAR
-);
-
--- Citations (2.4B rows)
-CREATE TABLE IF NOT EXISTS citations (
-    citingcorpusid INTEGER,
-    citedcorpusid  INTEGER,
-    isinfluential  BOOLEAN DEFAULT FALSE
-);
-
--- Authors (75M rows)
-CREATE TABLE IF NOT EXISTS authors (
-    authorid      VARCHAR PRIMARY KEY,
-    name          VARCHAR,
-    papercount    INTEGER DEFAULT 0,
-    citationcount INTEGER DEFAULT 0,
-    hindex        INTEGER DEFAULT 0
-);
-
--- Abstracts (100M rows)
-CREATE TABLE IF NOT EXISTS abstracts (
-    corpusid INTEGER PRIMARY KEY,
-    abstract VARCHAR
-);
-
--- TLDRs (58M rows)
-CREATE TABLE IF NOT EXISTS tldrs (
-    corpusid INTEGER,
-    text     VARCHAR
-);
-
--- Paper ID mappings (450M rows)
-CREATE TABLE IF NOT EXISTS paper_ids (
-    sha        VARCHAR NOT NULL,
-    corpusid   INTEGER NOT NULL,
-    is_primary BOOLEAN DEFAULT FALSE
-);
-
--- Publication venues
-CREATE TABLE IF NOT EXISTS publication_venues (
-    id   VARCHAR PRIMARY KEY,
-    name VARCHAR,
-    type VARCHAR,
-    issn VARCHAR
-);
-
--- Paper external IDs (flattened from papers.externalids)
-CREATE TABLE IF NOT EXISTS paper_external_ids (
-    corpusid INTEGER NOT NULL,
-    source   VARCHAR NOT NULL,
-    id       VARCHAR NOT NULL
-);
-
--- Paper authors (flattened from papers.authors)
-CREATE TABLE IF NOT EXISTS paper_authors (
-    corpusid INTEGER NOT NULL,
-    authorid VARCHAR,
-    name     VARCHAR,
-    position SMALLINT
-);
-
--- Pipeline metadata
-CREATE TABLE IF NOT EXISTS _meta (
-    key   VARCHAR PRIMARY KEY,
-    value VARCHAR
-);
-"""
-
-SORT_OPTIMIZATIONS: list[tuple[str, str, bool, str | None]] = [
-    ("citations", "citingcorpusid", False, None),
-    ("citations_by_cited", "citedcorpusid", True, "citations"),
-    ("paper_ids", "sha", False, None),
-    ("paper_ids_by_corpus", "corpusid", True, "paper_ids"),
-    ("paper_authors", "corpusid, position", False, None),
-    ("paper_external_ids", "source, id", False, None),
-]
-
-DATASET_SCHEMAS: dict[str, dict[str, str]] = {
-    "papers": {
-        "corpusid": "INTEGER",
-        "title": "VARCHAR",
-        "year": "SMALLINT",
-        "venue": "VARCHAR",
-        "citationcount": "INTEGER",
-        "referencecount": "INTEGER",
-        "influentialcitationcount": "INTEGER",
-        "isopenaccess": "BOOLEAN",
-        "publicationdate": "VARCHAR",
-        "publicationvenueid": "VARCHAR",
-    },
-    "citations": {
-        "citingcorpusid": "INTEGER",
-        "citedcorpusid": "INTEGER",
-        "isinfluential": "BOOLEAN",
-    },
-    "authors": {
-        "authorid": "VARCHAR",
-        "name": "VARCHAR",
-        "papercount": "INTEGER",
-        "citationcount": "INTEGER",
-        "hindex": "INTEGER",
-    },
-    "abstracts": {"corpusid": "INTEGER", "abstract": "VARCHAR"},
-    "tldrs": {"corpusid": "INTEGER", "text": "VARCHAR"},
-    "paper-ids": {"sha": "VARCHAR", "corpusid": "INTEGER", '"primary"': "BOOLEAN"},
-    "publication-venues": {
-        "id": "VARCHAR",
-        "name": "VARCHAR",
-        "type": "VARCHAR",
-        "issn": "VARCHAR",
-    },
-}
-
-INSERT_TEMPLATES: dict[str, list[str]] = {
-    "papers": [
-        """INSERT INTO papers
-           SELECT corpusid, title, year, venue, citationcount, referencecount,
-                  influentialcitationcount, isopenaccess, publicationdate, publicationvenueid
-           FROM {src}""",
-    ],
-    "citations": [
-        """INSERT INTO citations SELECT citingcorpusid, citedcorpusid, isinfluential
-           FROM {src} WHERE citingcorpusid IS NOT NULL AND citedcorpusid IS NOT NULL""",
-    ],
-    "authors": [
-        "INSERT INTO authors SELECT authorid, name, papercount, citationcount, hindex FROM {src}",
-    ],
-    "abstracts": [
-        "INSERT INTO abstracts SELECT corpusid, abstract FROM {src}",
-    ],
-    "tldrs": [
-        "INSERT INTO tldrs SELECT corpusid, text FROM {src}",
-    ],
-    "paper-ids": [
-        'INSERT INTO paper_ids SELECT sha, corpusid, "primary" FROM {src}',
-    ],
-    "publication-venues": [
-        "INSERT INTO publication_venues SELECT id, name, type, issn FROM {src}",
-    ],
-}
-
-PAPERS_AUTHORS_SCHEMA = {"corpusid": "INTEGER", "authors": "JSON[]"}
-PAPERS_EXTIDS_SCHEMA = {"corpusid": "INTEGER", "externalids": "JSON"}
 
 
 def find_shards(shards_dir: Path, dataset_name: str) -> list[Path]:
@@ -214,62 +63,27 @@ def ingest_dataset(dataset_name: str, shards: list[Path], db_path: Path) -> None
         len(shards),
     )
 
-    if dataset_name not in INSERT_TEMPLATES:
+    spec = DATASET_SPECS.get(dataset_name)
+    if spec is None:
         logger.warning("No ingestion handler for dataset '%s'", dataset_name)
         conn.close()
         return
 
-    schema = DATASET_SCHEMAS[dataset_name]
-    table_name = dataset_name.replace("-", "_")
-    conn.execute(f"DELETE FROM {table_name}")
-    if dataset_name == "papers":
-        conn.execute("DELETE FROM paper_authors")
-        conn.execute("DELETE FROM paper_external_ids")
+    for table_name in spec.reset_tables or (spec.table_name,):
+        conn.execute(f"DELETE FROM {table_name}")
 
     t0 = time.monotonic()
-    templates = INSERT_TEMPLATES[dataset_name]
 
     for index, shard in enumerate(shards, 1):
         shard_path = str(shard)
-        src = read_json_clause(shard_path, schema)
-
-        for template in templates:
-            conn.execute(template.format(src=src))
-
-        if dataset_name == "papers":
-            author_src = read_json_clause(shard_path, PAPERS_AUTHORS_SCHEMA)
-            conn.execute(f"""
-                INSERT INTO paper_authors
-                SELECT corpusid,
-                       json_extract_string(author, '$.authorId'),
-                       json_extract_string(author, '$.name'),
-                       (row_number() OVER (PARTITION BY corpusid)) - 1
-                FROM (
-                    SELECT corpusid, unnest(authors) AS author
-                    FROM {author_src}
-                    WHERE authors IS NOT NULL
-                )
-            """)
-
-            extid_src = read_json_clause(shard_path, PAPERS_EXTIDS_SCHEMA)
-            conn.execute(f"""
-                INSERT INTO paper_external_ids
-                SELECT corpusid, key, value
-                FROM (
-                    SELECT corpusid,
-                           unnest(map_keys(CAST(externalids AS MAP(VARCHAR, VARCHAR)))) AS key,
-                           unnest(map_values(CAST(externalids AS MAP(VARCHAR, VARCHAR)))) AS value
-                    FROM {extid_src}
-                    WHERE externalids IS NOT NULL
-                )
-                WHERE value IS NOT NULL AND value != ''
-            """)
+        for statement in spec.build_statements(shard_path, read_json_clause):
+            conn.execute(statement)
 
         elapsed = time.monotonic() - t0
         logger.info("  [%d/%d] %s (%.0fs elapsed)", index, len(shards), shard.name, elapsed)
 
     try:
-        count = conn.execute(f"SELECT count(*) FROM {table_name}").fetchone()[0]
+        count = conn.execute(f"SELECT count(*) FROM {spec.table_name}").fetchone()[0]
     except Exception:
         count = "?"
 
@@ -278,7 +92,7 @@ def ingest_dataset(dataset_name: str, shards: list[Path], db_path: Path) -> None
     conn.execute(
         "INSERT OR REPLACE INTO _meta VALUES (?, ?)",
         [
-            f"ingested_{dataset_name}",
+            f"ingested_{spec.name}",
             json.dumps(
                 {
                     "count": count if isinstance(count, int) else 0,
@@ -334,24 +148,39 @@ def build_indexes(db_path: Path) -> None:
     t0 = time.monotonic()
 
     existing = {row[0] for row in conn.execute("SHOW TABLES").fetchall()}
-    for table_name, sort_cols, is_copy, source_table in SORT_OPTIMIZATIONS:
-        src = source_table if is_copy else table_name
+    for optimization in SORT_OPTIMIZATIONS:
+        src = optimization.source_table if optimization.is_copy else optimization.table_name
         if src not in existing:
-            logger.info("  Skipping %s: source table %s not found", table_name, src)
+            logger.info(
+                "  Skipping %s: source table %s not found",
+                optimization.table_name,
+                src,
+            )
             continue
-        if is_copy and table_name in existing:
-            logger.info("  %s already exists, skipping", table_name)
+        if optimization.is_copy and optimization.table_name in existing:
+            logger.info("  %s already exists, skipping", optimization.table_name)
             continue
 
         try:
             row = conn.execute(f"SELECT count(*) FROM {src}").fetchone()
             if not row or row[0] == 0:
-                logger.info("  Skipping %s: source table %s is empty", table_name, src)
+                logger.info(
+                    "  Skipping %s: source table %s is empty",
+                    optimization.table_name,
+                    src,
+                )
                 continue
         except Exception:
             continue
 
-        _sort_table(conn, table_name, sort_cols, is_copy, source_table, t0)
+        _sort_table(
+            conn,
+            optimization.table_name,
+            optimization.sort_cols,
+            optimization.is_copy,
+            optimization.source_table,
+            t0,
+        )
 
     elapsed = time.monotonic() - t0
     logger.info("All optimizations done in %.0fs", elapsed)

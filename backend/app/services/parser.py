@@ -24,18 +24,8 @@ from app.services.parser_catalogs import (
     SUBAREA_NAMES,
     VENUE_DATA,
 )
-from app.services.parser_pipeline import (
-    EntryParseState,
-    apply_file_metadata,
-    normalize_authors as pipeline_normalize_authors,
-)
-from app.services.parser_pipeline import (
-    normalize_entry_type,
-    normalize_file_path,
-    normalize_title_and_year,
-    normalize_venue as pipeline_normalize_venue,
-    split_required_optional_fields,
-)
+from app.services.parser_passes import build_parser_passes, run_parser_passes
+from app.services.parser_pipeline import EntryParseState
 
 logger = get_logger(__name__)
 
@@ -213,6 +203,13 @@ def parse_authors(author_string: str) -> list[str]:
     return [clean_latex_string(a) for a in authors if a.strip()]
 
 
+_PARSER_PASSES = build_parser_passes(
+    clean_latex_string=clean_latex_string,
+    parse_authors=parse_authors,
+    resolve_venue=normalize_venue,
+)
+
+
 def find_bib_files(directory: Path) -> Iterator[Path]:
     """Recursively find all .bib files in a directory."""
     if not directory.exists():
@@ -298,25 +295,7 @@ def parse_entry(
         entry_type_str=entry_type_str,
     )
 
-    for normalizer in (
-        normalize_entry_type,
-        lambda current: normalize_title_and_year(
-            current,
-            clean_latex_string=clean_latex_string,
-        ),
-        normalize_file_path,
-        lambda current: pipeline_normalize_authors(
-            current,
-            parse_authors=parse_authors,
-        ),
-        lambda current: pipeline_normalize_venue(
-            current,
-            resolve_venue=normalize_venue,
-        ),
-        split_required_optional_fields,
-        apply_file_metadata,
-    ):
-        normalizer(state)
+    run_parser_passes(state, _PARSER_PASSES)
 
     if state.entry_type is EntryType.MISC and entry_type_str:
         logger.debug("Unknown entry type '%s', defaulting to misc", entry_type_str)
