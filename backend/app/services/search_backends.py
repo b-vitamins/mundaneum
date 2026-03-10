@@ -14,7 +14,6 @@ from app.schemas.search import (
     SearchHitResponse,
     SearchQuery,
     SearchResponse,
-    SearchSort,
     SearchSortField,
     SearchSortOrder,
     SearchSource,

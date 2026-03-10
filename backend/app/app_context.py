@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from fastapi import Request
 
 from app.runtime import AppRuntime, build_app_runtime
-from app.services.service_container import ServiceContainer, build_service_container
 from app.services.domain_events import DomainEventBus, build_domain_event_bus
+from app.services.service_container import ServiceContainer, build_service_container
 
 
 @dataclass(slots=True)

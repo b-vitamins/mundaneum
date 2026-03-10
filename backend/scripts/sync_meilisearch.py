@@ -6,7 +6,6 @@ Compatibility wrapper for the packaged Meilisearch sync CLI.
 import subprocess
 import sys
 
-
 if __name__ == "__main__":
     raise SystemExit(
         subprocess.call(

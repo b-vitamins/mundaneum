@@ -20,8 +20,8 @@ from app.models import EntryType
 from app.services.parser_catalogs import (
     CONTEXT_SUBAREA_NAMES,
     FULL_SLUG_SUBJECTS,
-    SUBJECT_PREFIXES,
     SUBAREA_NAMES,
+    SUBJECT_PREFIXES,
     VENUE_DATA,
 )
 from app.services.parser_passes import build_parser_passes, run_parser_passes

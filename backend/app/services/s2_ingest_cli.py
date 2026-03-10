@@ -12,7 +12,12 @@ import traceback
 
 from app.services.s2_ingest_config import ALL_DATASETS, CORE_DATASETS, load_settings
 from app.services.s2_ingest_download import download_dataset
-from app.services.s2_ingest_duckdb import build_indexes, find_shards, get_status, ingest_dataset
+from app.services.s2_ingest_duckdb import (
+    build_indexes,
+    find_shards,
+    get_status,
+    ingest_dataset,
+)
 
 logger = logging.getLogger(__name__)
 

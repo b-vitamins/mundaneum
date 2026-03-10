@@ -6,9 +6,14 @@ from sqlalchemy import select
 from app.main import app
 from app.models import Entry
 from app.models import S2Paper as S2PaperModel
-from app.schemas.s2 import S2Author, S2Embedding, S2TLDR
+from app.schemas.s2 import S2TLDR, S2Author, S2Embedding
 from app.schemas.s2 import S2Paper as S2PaperSchema
-from app.services.s2 import S2Transport, TitleResolver, resolve_entry_s2_id, upsert_s2_paper
+from app.services.s2 import (
+    S2Transport,
+    TitleResolver,
+    resolve_entry_s2_id,
+    upsert_s2_paper,
+)
 
 
 @pytest.mark.asyncio

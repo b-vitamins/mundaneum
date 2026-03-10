@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import Enum as PyEnum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -15,6 +15,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.modeling.value_objects import EntryMetadata
+
+if TYPE_CHECKING:
+    from app.modeling.catalog_models import EntryTopic, Subject, Venue
+    from app.modeling.collection_models import CollectionEntry
+    from app.modeling.s2_models import S2Paper
 
 
 class EntryType(str, PyEnum):

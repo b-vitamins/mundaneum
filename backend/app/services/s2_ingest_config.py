@@ -7,7 +7,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-
 S2_DATASETS_API = "https://api.semanticscholar.org/datasets/v1"
 
 CORE_DATASETS = [

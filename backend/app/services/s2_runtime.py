@@ -8,10 +8,17 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.services.s2_source_registry import ChainedSource, S2SourceRegistry
+    from app.services.s2_sources import LocalCorpus
+    from app.services.s2_sync import SyncOrchestrator
+    from app.services.s2_transport import S2Transport
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +65,8 @@ def build_s2_runtime(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> S2Runtime:
     """Build a fully wired S2 runtime with shared transport/source state."""
-    from app.services.s2_source_registry import S2SourceRegistry
     from app.services.s2_resolvers import default_resolvers
+    from app.services.s2_source_registry import S2SourceRegistry
     from app.services.s2_sources import LiveAPI, LocalCorpus
     from app.services.s2_sync import create_sync_orchestrator
     from app.services.s2_transport import S2Transport

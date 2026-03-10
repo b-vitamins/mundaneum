@@ -14,7 +14,6 @@ from app.routers.entity_common import (
 )
 from app.schemas.entities import AuthorDetail, AuthorEntryItem, AuthorListItem
 
-
 router = APIRouter(prefix="/authors", tags=["authors"])
 
 

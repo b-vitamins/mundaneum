@@ -13,8 +13,8 @@ from app.database import get_db
 from app.dependencies import get_events, get_search_index
 from app.exceptions import ValidationError
 from app.logging import get_logger
-from app.services.ingest import ingest_directory
 from app.services.domain_events import DomainEventBus
+from app.services.ingest import ingest_directory
 from app.services.sync import SearchIndexService
 
 logger = get_logger(__name__)

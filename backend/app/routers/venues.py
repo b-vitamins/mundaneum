@@ -13,7 +13,6 @@ from app.routers.entity_common import (
 )
 from app.schemas.entities import VenueDetail, VenueEntryItem, VenueListItem
 
-
 router = APIRouter(prefix="/venues", tags=["venues"])
 
 

@@ -5,6 +5,7 @@ Explicit process-owned service container for Mundaneum.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import meilisearch
 from minio import Minio
@@ -13,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.config import settings
 from app.services.storage import StorageService
 from app.services.sync import SearchIndexService
+
+if TYPE_CHECKING:
+    from app.services.s2_runtime import S2Runtime
 
 
 @dataclass(slots=True)

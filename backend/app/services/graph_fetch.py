@@ -82,7 +82,7 @@ async def load_papers(
 
     results = await asyncio.gather(*[source.get_paper(paper_id) for paper_id in ids])
     papers: dict[str, PaperRecord] = {}
-    for paper_id, paper in zip(ids, results):
+    for paper_id, paper in zip(ids, results, strict=False):
         if paper is not None:
             papers[paper_id] = paper
     return papers

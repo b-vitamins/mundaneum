@@ -6,11 +6,11 @@ for immediate visibility in the UI.
 """
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from collections.abc import Iterable
 from typing import Awaitable, Callable, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

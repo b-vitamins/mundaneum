@@ -16,6 +16,8 @@ from app.services.s2_resolvers import (
     DOIResolver,
     Resolver,
     TitleResolver,
+)
+from app.services.s2_resolvers import (
     default_resolvers as _default_resolvers,
 )
 from app.services.s2_runtime import SyncRegistry

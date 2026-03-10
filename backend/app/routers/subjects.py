@@ -13,7 +13,6 @@ from app.routers.entity_common import (
 )
 from app.schemas.entities import SubjectDetail, SubjectEntryItem, SubjectListItem
 
-
 router = APIRouter(prefix="/subjects", tags=["subjects"])
 
 

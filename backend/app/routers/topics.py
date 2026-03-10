@@ -12,7 +12,6 @@ from app.routers.entity_common import (
 )
 from app.schemas.entities import TopicDetail, TopicEntryItem, TopicListItem
 
-
 router = APIRouter(prefix="/topics", tags=["topics"])
 
 

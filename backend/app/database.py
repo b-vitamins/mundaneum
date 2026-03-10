@@ -5,10 +5,10 @@ Database configuration and dependency helpers.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -16,6 +16,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.services.service_container import DatabaseServices
 
 
 def _get_database_url() -> str:

@@ -19,7 +19,6 @@ from app.services.graph_builder import build_similarity_subgraph
 from app.services.graph_models import GraphData
 from app.services.s2_protocol import S2DataSource
 
-
 # ──────────────────────────────────────────────────────────
 # GraphProvider protocol — the pluggable interface
 # ──────────────────────────────────────────────────────────

@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import Final
 
 from meilisearch.errors import MeilisearchApiError, MeilisearchCommunicationError
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging import get_logger
 from app.schemas.search import (

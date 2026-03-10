@@ -9,7 +9,12 @@ from pathlib import Path
 
 from app.config import settings
 from app.runtime_components import DEFAULT_RUNTIME_DEFINITION
-from app.runtime_models import BackfillPolicy, ManagedJob, RuntimeDefinition, RuntimeResources
+from app.runtime_models import (
+    BackfillPolicy,
+    ManagedJob,
+    RuntimeDefinition,
+    RuntimeResources,
+)
 from app.services.domain_events import DomainEventBus
 from app.services.service_container import ServiceContainer
 from app.services.system_health import SystemHealthService

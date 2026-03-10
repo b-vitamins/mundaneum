@@ -4,11 +4,11 @@ Unit tests for storage service.
 
 import pytest
 
+from app.services.service_container import build_service_container
 from app.services.storage import (
     StorageError,
     StorageService,
 )
-from app.services.service_container import build_service_container
 
 
 def test_get_client_returns_minio_instance():

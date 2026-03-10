@@ -6,13 +6,16 @@ from __future__ import annotations
 
 import uuid
 from enum import Enum as PyEnum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.modeling.library_models import Entry
 
 
 class VenueCategory(str, PyEnum):
