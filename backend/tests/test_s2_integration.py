@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import select
 
+from app.main import app
 from app.models import Entry
 from app.models import S2Paper as S2PaperModel
 from app.schemas.s2 import S2Author, S2Embedding, S2TLDR
@@ -36,6 +37,8 @@ async def test_resolve_s2_id_search(db_session):
     s2_id = await resolve_entry_s2_id(
         entry,
         db_session,
+        source=AsyncMock(),
+        session_factory=app.state.context.services.database.session_factory,
         transport=transport,
         resolvers=[TitleResolver()],
     )

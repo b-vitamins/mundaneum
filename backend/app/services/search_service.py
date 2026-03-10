@@ -26,7 +26,7 @@ from app.schemas.search import (
 )
 from app.services.entry_queries import ENTRY_SORT_COLUMNS, entry_load_options
 from app.services.entry_serializers import serialize_search_hit
-from app.services.sync import INDEX_NAME, get_client
+from app.services.sync import INDEX_NAME, SearchIndexService
 
 logger = get_logger(__name__)
 
@@ -61,10 +61,12 @@ def _build_meili_filter(query: SearchQuery) -> str | None:
     return " AND ".join(parts) if parts else None
 
 
-def execute_meilisearch(query: SearchQuery) -> SearchResponse:
+def execute_meilisearch(
+    query: SearchQuery,
+    search_index: SearchIndexService,
+) -> SearchResponse:
     """Execute the preferred Meilisearch query."""
-    client = get_client()
-    index = client.index(INDEX_NAME)
+    index = search_index.client.index(INDEX_NAME)
     result = index.search(
         query.normalized_query or "",
         {
@@ -177,10 +179,14 @@ async def execute_database_search(
     )
 
 
-async def search_entries(db: AsyncSession, query: SearchQuery) -> SearchResponse:
+async def search_entries(
+    db: AsyncSession,
+    query: SearchQuery,
+    search_index: SearchIndexService,
+) -> SearchResponse:
     """Search with explicit degradation handling."""
     try:
-        return execute_meilisearch(query)
+        return execute_meilisearch(query, search_index)
     except (MeilisearchCommunicationError, MeilisearchApiError) as exc:
         logger.warning("Meilisearch search failed, degrading to database: %s", exc)
 

@@ -11,8 +11,8 @@ from app.models import Entry
 from app.schemas.entries import S2MetaResponse, S2PaperResponse
 from app.services.entry_queries import get_entry
 from app.services.s2 import SyncStatus, sync_entry
-from app.services.s2_corpus import get_data_source
 from app.services.s2_protocol import EdgeRecord, PaperRecord
+from app.services.s2_sync import SyncOrchestrator
 
 
 def serialize_s2_paper(paper: PaperRecord, edge: EdgeRecord | None = None) -> S2PaperResponse:
@@ -52,17 +52,22 @@ def serialize_s2_meta(paper: PaperRecord) -> S2MetaResponse:
     )
 
 
-async def get_entry_s2_meta(db: AsyncSession, entry_id: UUID) -> S2MetaResponse:
+async def get_entry_s2_meta(
+    db: AsyncSession,
+    entry_id: UUID,
+    *,
+    source,
+    orchestrator: SyncOrchestrator,
+) -> S2MetaResponse:
     """Load S2 metadata for an entry from corpus and sync fallback."""
     entry = await get_entry(db, entry_id, include_relationships=False)
-    source = get_data_source()
 
     if entry.s2_id:
         paper = await source.get_paper(entry.s2_id)
         if paper is not None:
             return serialize_s2_meta(paper)
 
-    status = await sync_entry(str(entry_id))
+    status = await sync_entry(orchestrator, str(entry_id))
     if status == SyncStatus.SYNCING:
         return S2MetaResponse(sync_status="syncing")
     if status == SyncStatus.NO_MATCH:
@@ -83,6 +88,7 @@ async def get_related_s2_papers(
     db: AsyncSession,
     entry_id: UUID,
     *,
+    source,
     relation: str,
     limit: int = 100,
 ) -> list[S2PaperResponse]:
@@ -92,7 +98,6 @@ async def get_related_s2_papers(
     if not s2_id:
         return []
 
-    source = get_data_source()
     edge_loader = source.get_citations if relation == "citations" else source.get_references
     edges = await edge_loader(s2_id)
     if not edges:

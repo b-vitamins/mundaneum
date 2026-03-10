@@ -8,7 +8,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from app.database import async_session
+from app.app_context import build_app_context
 from app.services.ingest import ingest_directory
 
 
@@ -28,8 +28,17 @@ async def import_directory(directory: str) -> int:
         return 1
 
     print(f"Importing BibTeX files from: {target}")
-    async with async_session() as session:
-        result = await ingest_directory(session, str(target))
+    context = build_app_context()
+    session_factory = context.services.database.session_factory
+    async with session_factory() as session:
+        result = await ingest_directory(
+            session,
+            str(target),
+            search_index=context.services.search.indexer,
+        )
+
+    await context.services.database.engine.dispose()
+    await context.services.s2_runtime.close()
 
     print("\nImport complete!")
     print(f"  Parsed:   {result['total_parsed']} entries")

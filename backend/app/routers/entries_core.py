@@ -4,7 +4,7 @@ Core entry endpoints.
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,12 +54,14 @@ async def list_entry_rows(
 @router.get("/{entry_id}", response_model=EntryDetailResponse)
 async def get_entry_detail(
     entry_id: UUID,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> EntryDetailResponse:
     """Get a single entry and schedule background S2 hydration."""
     entry = await get_entry(db, entry_id)
-    background_tasks.add_task(background_sync_entry, str(entry_id))
+    orchestrator = request.app.state.context.services.s2_runtime.orchestrator
+    background_tasks.add_task(background_sync_entry, orchestrator, str(entry_id))
     return serialize_entry_detail(entry)
 
 

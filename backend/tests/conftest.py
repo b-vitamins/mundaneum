@@ -22,9 +22,8 @@ async def client():
 @pytest_asyncio.fixture
 async def db_session():
     """Create a new database session for a test."""
-    from app.database import async_session
-
-    async with async_session() as session:
+    session_factory = app.state.context.services.database.session_factory
+    async with session_factory() as session:
         yield session
         # Rollback any changes
         await session.rollback()

@@ -11,6 +11,8 @@ from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.services.storage import StorageService
+from app.services.sync import SearchIndexService
 
 
 @dataclass(slots=True)
@@ -22,11 +24,13 @@ class DatabaseServices:
 @dataclass(slots=True)
 class SearchServices:
     client: meilisearch.Client
+    indexer: SearchIndexService
 
 
 @dataclass(slots=True)
 class StorageServices:
     client: Minio
+    service: StorageService
 
 
 @dataclass(slots=True)
@@ -35,9 +39,6 @@ class ServiceContainer:
     search: SearchServices
     storage: StorageServices
     s2_runtime: "S2Runtime"
-
-
-_container: ServiceContainer | None = None
 
 
 def _build_meili_client() -> meilisearch.Client:
@@ -63,26 +64,18 @@ def build_service_container() -> ServiceContainer:
     from app.database import build_database_services
     from app.services.s2_runtime import build_s2_runtime
 
+    database = build_database_services()
+    search_client = _build_meili_client()
+    storage_client = _build_minio_client()
     return ServiceContainer(
-        database=build_database_services(),
-        search=SearchServices(client=_build_meili_client()),
-        storage=StorageServices(client=_build_minio_client()),
-        s2_runtime=build_s2_runtime(),
+        database=database,
+        search=SearchServices(
+            client=search_client,
+            indexer=SearchIndexService(search_client),
+        ),
+        storage=StorageServices(
+            client=storage_client,
+            service=StorageService(storage_client),
+        ),
+        s2_runtime=build_s2_runtime(session_factory=database.session_factory),
     )
-
-
-def set_service_container(container: ServiceContainer) -> None:
-    global _container
-    _container = container
-
-
-def get_service_container() -> ServiceContainer:
-    global _container
-    if _container is None:
-        _container = build_service_container()
-    return _container
-
-
-def reset_service_container() -> None:
-    global _container
-    _container = None

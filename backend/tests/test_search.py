@@ -73,7 +73,7 @@ async def test_search_pagination(client):
 async def test_search_reports_partial_when_degraded(client, monkeypatch):
     """Search should expose degraded fallback state instead of empty success."""
 
-    def fake_meili(_query):
+    def fake_meili(_query, _search_index):
         raise MeilisearchCommunicationError("meili down")
 
     async def fake_database_search(_db, _query):
@@ -101,7 +101,7 @@ async def test_search_reports_partial_when_degraded(client, monkeypatch):
 async def test_search_reports_unavailable_when_all_backends_fail(client, monkeypatch):
     """Search should report full unavailability explicitly."""
 
-    def fake_meili(_query):
+    def fake_meili(_query, _search_index):
         raise MeilisearchCommunicationError("meili down")
 
     async def fake_database_search(_db, _query):

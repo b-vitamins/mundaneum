@@ -2,10 +2,15 @@
 Compatibility surface for Semantic Scholar services.
 """
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from __future__ import annotations
+
+import logging
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Entry
 from app.schemas.s2 import S2Paper as S2PaperSchema
+from app.services.s2_protocol import S2DataSource
 from app.services.s2_resolvers import (
     ArXivResolver,
     DOIResolver,
@@ -14,9 +19,16 @@ from app.services.s2_resolvers import (
     default_resolvers as _default_resolvers,
 )
 from app.services.s2_runtime import SyncRegistry
-from app.services.s2_store import FULL_PAPER_FIELDS, PaperStore, SQLAlchemyPaperStore, paper_to_record
+from app.services.s2_store import (
+    FULL_PAPER_FIELDS,
+    PaperStore,
+    SQLAlchemyPaperStore,
+    paper_to_record,
+)
 from app.services.s2_sync import SyncOrchestrator, SyncStatus, create_sync_orchestrator
 from app.services.s2_transport import S2Transport
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ArXivResolver",
@@ -32,7 +44,6 @@ __all__ = [
     "_default_resolvers",
     "background_sync_entry",
     "create_sync_orchestrator",
-    "get_sync_orchestrator",
     "paper_to_record",
     "resolve_entry_s2_id",
     "sync_entry",
@@ -40,25 +51,33 @@ __all__ = [
 ]
 
 
-async def sync_entry(entry_id: str, force: bool = False) -> SyncStatus:
+async def sync_entry(
+    orchestrator: SyncOrchestrator,
+    entry_id: str,
+    force: bool = False,
+) -> SyncStatus:
     """Public entry-point for syncing one library entry against S2."""
-    return await get_sync_orchestrator().ensure_synced(entry_id, force=force)
+    return await orchestrator.ensure_synced(entry_id, force=force)
 
 
-async def background_sync_entry(entry_id: str, force: bool = False) -> None:
+async def background_sync_entry(
+    orchestrator: SyncOrchestrator,
+    entry_id: str,
+    force: bool = False,
+) -> None:
     """Background-safe sync wrapper with error logging."""
-    import logging
-
-    logger = logging.getLogger(__name__)
     try:
-        await sync_entry(entry_id, force=force)
-    except Exception as exc:
+        await sync_entry(orchestrator, entry_id, force=force)
+    except Exception as exc:  # pragma: no cover - defensive logging
         logger.warning("Background sync failed for %s: %s", entry_id, exc)
 
 
 async def resolve_entry_s2_id(
     entry: Entry,
     session: AsyncSession,
+    *,
+    source: S2DataSource,
+    session_factory: async_sessionmaker[AsyncSession],
     transport: S2Transport | None = None,
     resolvers: list[Resolver] | None = None,
 ) -> str | None:
@@ -66,13 +85,12 @@ async def resolve_entry_s2_id(
     if entry.s2_id:
         return entry.s2_id
 
-    from app.services.s2_runtime import get_s2_runtime
-
     orchestrator = create_sync_orchestrator(
-        source=get_s2_runtime().data_source,
+        source=source,
         sync_registry=SyncRegistry(),
         transport=transport,
         resolvers=resolvers,
+        session_factory=session_factory,
     )
     s2_id = await orchestrator._resolve(entry)
     if not s2_id:
@@ -89,10 +107,3 @@ async def upsert_s2_paper(session: AsyncSession, paper: S2PaperSchema) -> None:
     store = SQLAlchemyPaperStore(session)
     await store.upsert_paper(paper_to_record(paper))
     await store.commit()
-
-
-def get_sync_orchestrator() -> SyncOrchestrator:
-    """Compatibility wrapper returning the runtime-owned orchestrator."""
-    from app.services.s2_runtime import get_s2_runtime
-
-    return get_s2_runtime().orchestrator

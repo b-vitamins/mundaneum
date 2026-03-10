@@ -9,6 +9,8 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,10 @@ class S2Runtime:
         await self.transport.close()
 
 
-def build_s2_runtime() -> S2Runtime:
+def build_s2_runtime(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> S2Runtime:
     """Build a fully wired S2 runtime with shared transport/source state."""
     from app.services.s2_source_registry import S2SourceRegistry
     from app.services.s2_resolvers import default_resolvers
@@ -87,6 +92,7 @@ def build_s2_runtime() -> S2Runtime:
         sync_registry=SyncRegistry(),
         transport=transport,
         resolvers=default_resolvers(),
+        session_factory=session_factory,
     )
 
     return S2Runtime(
@@ -96,10 +102,3 @@ def build_s2_runtime() -> S2Runtime:
         data_source=data_source,
         orchestrator=orchestrator,
     )
-
-
-def get_s2_runtime() -> S2Runtime:
-    """Return the process-owned S2 runtime."""
-    from app.services.service_container import get_service_container
-
-    return get_service_container().s2_runtime

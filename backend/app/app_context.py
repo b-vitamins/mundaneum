@@ -9,11 +9,7 @@ from dataclasses import dataclass
 from fastapi import Request
 
 from app.runtime import AppRuntime, build_app_runtime
-from app.services.service_container import (
-    ServiceContainer,
-    build_service_container,
-    set_service_container,
-)
+from app.services.service_container import ServiceContainer, build_service_container
 
 
 @dataclass(slots=True)
@@ -27,7 +23,6 @@ class AppContext:
 def build_app_context() -> AppContext:
     """Build all process-owned services and runtime wiring."""
     services = build_service_container()
-    set_service_container(services)
     runtime = build_app_runtime(services)
     return AppContext(services=services, runtime=runtime)
 

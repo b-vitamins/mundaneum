@@ -4,13 +4,26 @@ System health aggregation for Mundaneum.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
 from app.config import VERSION, settings
-from app.database import check_db_health
-from app.services.sync import is_available as meili_available
+
+
+@dataclass(slots=True)
+class HealthContributor:
+    """Named health probe for runtime-owned infrastructure."""
+
+    name: str
+    probe: Callable[[], bool | Awaitable[bool]]
+
+    async def check(self) -> bool:
+        result = self.probe()
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
 
 @dataclass(slots=True)
@@ -62,17 +75,15 @@ class SystemHealthService:
     def __init__(
         self,
         *,
-        db_probe: Callable[[], Awaitable[bool]] = check_db_health,
-        search_probe: Callable[[], bool] = meili_available,
+        contributors: list[HealthContributor],
         bibliography_path: Path | None = None,
     ):
-        self._db_probe = db_probe
-        self._search_probe = search_probe
+        self._contributors = {contributor.name: contributor for contributor in contributors}
         self._bibliography_path = bibliography_path or Path(settings.bib_directory)
 
     async def get_report(self) -> SystemHealthReport:
-        db_ok = await self._db_probe()
-        search_ok = self._search_probe()
+        db_ok = await self._contributors["database"].check()
+        search_ok = await self._contributors["search"].check()
 
         bib_exists = self._bibliography_path.exists() and self._bibliography_path.is_dir()
         bib_count = len(list(self._bibliography_path.glob("**/*.bib"))) if bib_exists else 0

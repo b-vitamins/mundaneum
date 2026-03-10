@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import settings
+from app.database import check_db_health
 from app.logging import get_logger
+from app.services.ingest import ensure_search_index_ready, ingest_bib_file
 from app.services.service_container import ServiceContainer
-from app.services.system_health import SystemHealthService
+from app.services.system_health import HealthContributor, SystemHealthService
 from app.services.worker import IngestionWorker
 
 logger = get_logger(__name__)
@@ -191,6 +193,14 @@ def build_app_runtime(services: ServiceContainer) -> AppRuntime:
             bibliography_path=bibliography_path,
             worker=IngestionWorker(
                 session_factory=services.database.session_factory,
+                ensure_index_ready=lambda: ensure_search_index_ready(
+                    services.search.indexer
+                ),
+                ingest_file=lambda session, path: ingest_bib_file(
+                    session,
+                    path,
+                    search_index=services.search.indexer,
+                ),
             ),
         ),
         S2BackfillJob(
@@ -200,6 +210,18 @@ def build_app_runtime(services: ServiceContainer) -> AppRuntime:
     ]
     return AppRuntime(
         services=services,
-        health=SystemHealthService(bibliography_path=bibliography_path),
+        health=SystemHealthService(
+            contributors=[
+                HealthContributor(
+                    name="database",
+                    probe=lambda: check_db_health(services.database.session_factory),
+                ),
+                HealthContributor(
+                    name="search",
+                    probe=services.search.indexer.is_available,
+                ),
+            ],
+            bibliography_path=bibliography_path,
+        ),
         supervisor=BackgroundSupervisor(jobs),
     )

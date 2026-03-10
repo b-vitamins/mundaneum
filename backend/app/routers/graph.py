@@ -8,7 +8,7 @@ database backend can be swapped in without touching this file.
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -17,7 +17,6 @@ from app.schemas.graph import GraphResponse, graph_response_from_data
 from app.services.graph import get_graph_provider
 from app.services.graph_resolution import resolve_graph_center_s2_id
 from app.services.s2 import background_sync_entry
-from app.services.s2_corpus import get_local_source
 
 logger = get_logger(__name__)
 
@@ -32,6 +31,7 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 @router.get("/{entry_id}", response_model=GraphResponse)
 async def get_graph(
     entry_id: UUID,
+    request: Request,
     background_tasks: BackgroundTasks,
     depth: int = Query(default=1, ge=1, le=2, description="Hops to expand (1 or 2)"),
     max_nodes: int = Query(
@@ -45,12 +45,13 @@ async def get_graph(
     DuckDB-first: builds graph instantly from local corpus data.
     API sync runs in the background for future benefit.
     """
-    local = get_local_source()
-    provider = get_graph_provider(db, source=local)
+    s2_runtime = request.app.state.context.services.s2_runtime
+    local = s2_runtime.local_source
+    provider = get_graph_provider(db, source=s2_runtime.data_source)
     entry_id_str = str(entry_id)
 
     # Fire background sync (non-blocking — enriches data for next request)
-    background_tasks.add_task(background_sync_entry, entry_id_str)
+    background_tasks.add_task(background_sync_entry, s2_runtime.orchestrator, entry_id_str)
 
     s2_id = await resolve_graph_center_s2_id(entry_id_str, db, provider, local)
 

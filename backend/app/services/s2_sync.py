@@ -8,13 +8,11 @@ import asyncio
 import enum
 import logging
 from datetime import UTC, datetime
-from typing import Any, Callable
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
-from app.database import async_session
 from app.models import Entry
 from app.schemas.s2 import S2GraphResponse
 from app.schemas.s2 import S2Paper as S2PaperSchema
@@ -47,7 +45,7 @@ class SyncOrchestrator:
         resolvers: list[Resolver],
         source: S2DataSource,
         sync_registry,
-        session_factory: Callable[[], Any] = async_session,
+        session_factory: async_sessionmaker[AsyncSession],
         store_factory=None,
     ):
         self._transport = transport
@@ -332,7 +330,7 @@ def create_sync_orchestrator(
     sync_registry,
     transport: S2Transport | None = None,
     resolvers: list[Resolver] | None = None,
-    session_factory: Callable[[], Any] = async_session,
+    session_factory: async_sessionmaker[AsyncSession],
     store_factory=None,
 ) -> SyncOrchestrator:
     """Create a sync orchestrator with default transport and resolver policy."""

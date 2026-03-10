@@ -6,16 +6,17 @@ import pytest
 
 from app.services.storage import (
     StorageError,
-    get_client,
+    StorageService,
 )
+from app.services.service_container import build_service_container
 
 
 def test_get_client_returns_minio_instance():
-    """Test that get_client returns a Minio client instance."""
-    client = get_client()
-    assert client is not None
-    # Should return the same cached instance
-    assert get_client() is client
+    """Test that the storage service is built around a Minio client."""
+    services = build_service_container()
+    storage = services.storage.service
+    assert isinstance(storage, StorageService)
+    assert storage.client is services.storage.client
 
 
 def test_storage_error_is_exception():

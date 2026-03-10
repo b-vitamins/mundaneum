@@ -8,9 +8,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_search_index
 from app.models import EntryType
 from app.schemas.search import SearchFilters, SearchQuery, SearchResponse, SearchSort
 from app.services.search_service import search_entries as execute_search
+from app.services.sync import SearchIndexService
 
 router = APIRouter(prefix="", tags=["search"])
 
@@ -18,6 +20,7 @@ router = APIRouter(prefix="", tags=["search"])
 @router.get("", response_model=SearchResponse)
 async def search_entries(
     db: AsyncSession = Depends(get_db),
+    search_index: SearchIndexService = Depends(get_search_index),
     q: Optional[str] = Query(None, description="Search query"),
     entry_type: EntryType | None = Query(None, description="Filter by entry type"),
     year_from: Optional[int] = Query(None, description="Minimum year"),
@@ -42,4 +45,4 @@ async def search_entries(
         offset=offset,
         sort=SearchSort.from_raw(sort),
     )
-    return await execute_search(db, query)
+    return await execute_search(db, query, search_index)

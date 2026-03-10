@@ -4,15 +4,17 @@ Import router for Mundaneum API.
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.dependencies import get_search_index
 from app.exceptions import ValidationError
 from app.logging import get_logger
 from app.services.ingest import ingest_directory
+from app.services.sync import SearchIndexService
 
 logger = get_logger(__name__)
 
@@ -57,6 +59,7 @@ class ImportResponse(BaseModel):
 async def import_bibtex(
     request: ImportRequest,
     db: AsyncSession = Depends(get_db),
+    search_index: SearchIndexService = Depends(get_search_index),
 ):
     """
     Import BibTeX files from a directory.
@@ -73,6 +76,6 @@ async def import_bibtex(
         raise ValidationError("Path is not a directory")
 
     logger.info("Starting import from: %s", directory)
-    result = await ingest_directory(db, directory)
+    result = await ingest_directory(db, directory, search_index=search_index)
 
     return ImportResponse(**result)

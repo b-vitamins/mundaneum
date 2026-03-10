@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Entry
 from app.services.graph_builder import build_similarity_subgraph
 from app.services.graph_models import GraphData
-from app.services.s2_corpus import get_data_source
 from app.services.s2_protocol import S2DataSource
 
 
@@ -81,10 +80,10 @@ class SQLAlchemyGraphProvider:
     def __init__(
         self,
         session: AsyncSession,
-        source: S2DataSource | None = None,
+        source: S2DataSource,
     ):
         self.session = session
-        self._source = source or get_data_source()
+        self._source = source
 
     async def resolve_entry_s2_id(self, entry_id: str) -> str | None:
         """Resolve a Mundaneum entry UUID to its Semantic Scholar paper ID."""
@@ -117,7 +116,7 @@ class SQLAlchemyGraphProvider:
 
 def get_graph_provider(
     session: AsyncSession,
-    source: S2DataSource | None = None,
+    source: S2DataSource,
 ) -> GraphProvider:
     """
     Factory function for obtaining a GraphProvider instance.

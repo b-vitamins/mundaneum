@@ -1,11 +1,12 @@
 """
-Database configuration and session management.
+Database configuration and dependency helpers.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
+from fastapi import Request
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -40,7 +41,7 @@ def build_database_services() -> "DatabaseServices":
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout,
-        pool_pre_ping=True,  # Verify connections before use
+        pool_pre_ping=True,
     )
     session_factory = async_sessionmaker(
         engine,
@@ -50,49 +51,27 @@ def build_database_services() -> "DatabaseServices":
     return DatabaseServices(engine=engine, session_factory=session_factory)
 
 
-def get_engine() -> AsyncEngine:
-    from app.services.service_container import get_service_container
-
-    return get_service_container().database.engine
-
-
-def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    from app.services.service_container import get_service_container
-
-    return get_service_container().database.session_factory
-
-
-class _EngineProxy:
-    def __getattr__(self, name: str):
-        return getattr(get_engine(), name)
-
-
-class _SessionFactoryProxy:
-    def __call__(self, *args, **kwargs):
-        return get_session_factory()(*args, **kwargs)
-
-
-engine = _EngineProxy()
-async_session = _SessionFactoryProxy()
-
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session for dependency injection."""
-    async with get_session_factory()() as session:
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """Resolve a database session from the app-owned context."""
+    session_factory = request.app.state.context.services.database.session_factory
+    async with session_factory() as session:
         try:
             yield session
         finally:
             await session.close()
 
 
-async def check_db_health(timeout: float = 5.0) -> bool:
+async def check_db_health(
+    session_factory: async_sessionmaker[AsyncSession],
+    timeout: float = 5.0,
+) -> bool:
     """Check database connectivity with timeout."""
     import asyncio
 
     from sqlalchemy import text
 
     async def _check() -> bool:
-        async with get_session_factory()() as session:
+        async with session_factory() as session:
             await session.execute(text("SELECT 1"))
             return True
 

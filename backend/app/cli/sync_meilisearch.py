@@ -10,15 +10,15 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.database import async_session
+from app.app_context import build_app_context
 from app.models import Entry, EntryAuthor
 from app.services.sync import (
     FILTERABLE_ATTRS,
     INDEX_NAME,
     SEARCHABLE_ATTRS,
     SORTABLE_ATTRS,
+    SearchIndexService,
     entry_to_document,
-    get_client,
 )
 
 
@@ -29,8 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
 
-async def get_all_entries():
-    async with async_session() as session:
+async def get_all_entries(context):
+    session_factory = context.services.database.session_factory
+    async with session_factory() as session:
         result = await session.execute(
             select(Entry).options(
                 selectinload(Entry.authors).selectinload(EntryAuthor.author)
@@ -41,18 +42,22 @@ async def get_all_entries():
 
 async def sync_index() -> int:
     print("Fetching entries from PostgreSQL...")
-    entries = await get_all_entries()
+    context = build_app_context()
+    entries = await get_all_entries(context)
     print(f"Found {len(entries)} entries")
 
     if not entries:
         print("No entries to sync")
+        await context.services.database.engine.dispose()
+        await context.services.s2_runtime.close()
         return 0
 
     print("Converting to Meilisearch documents...")
     docs = [entry_to_document(entry) for entry in entries]
 
     print("Connecting to Meilisearch...")
-    client = get_client()
+    search_index: SearchIndexService = context.services.search.indexer
+    client = search_index.client
     index = client.index(INDEX_NAME)
 
     print("Configuring index...")
@@ -71,6 +76,8 @@ async def sync_index() -> int:
 
     print(f"\nDone! Synced {len(docs)} entries to Meilisearch")
     print("Note: indexing happens in the background, search may take a moment to work")
+    await context.services.database.engine.dispose()
+    await context.services.s2_runtime.close()
     return 0
 
 
