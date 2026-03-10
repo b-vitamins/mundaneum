@@ -8,11 +8,19 @@ from pathlib import Path
 
 from app.config import settings
 from app.exceptions import MundaneumError
-from app.services.worker import worker
+from app.runtime import AppRuntime
+from app.runtime import BibliographyIngestJob
 
 
-def get_ingest_status() -> dict:
-    return worker.get_status()
+def _get_ingest_job(runtime: AppRuntime) -> BibliographyIngestJob:
+    job = runtime.get_job("bibliography_ingest")
+    if not isinstance(job, BibliographyIngestJob):
+        raise MundaneumError("Bibliography ingest job is not configured", status_code=500)
+    return job
+
+
+def get_ingest_status(runtime: AppRuntime) -> dict:
+    return _get_ingest_job(runtime).status()
 
 
 def resolve_ingest_directory(directory: str | None) -> Path:
@@ -25,10 +33,6 @@ def resolve_ingest_directory(directory: str | None) -> Path:
     return path
 
 
-async def start_ingest(directory: str | None) -> dict:
-    if worker.is_running:
-        return {"message": "Ingestion already running", **worker.get_status()}
-
+async def start_ingest(runtime: AppRuntime, directory: str | None) -> dict:
     path = resolve_ingest_directory(directory)
-    await worker.start(path)
-    return {"message": "Ingestion started", **worker.get_status()}
+    return await _get_ingest_job(runtime).trigger(path)

@@ -10,9 +10,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from collections.abc import Iterable
+from typing import Awaitable, Callable, Optional
 
-from app.database import async_session
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.logging import get_logger
 from app.services.ingest import ensure_search_index_ready, ingest_bib_file
 from app.services.parser import find_bib_files
@@ -51,9 +53,20 @@ class IngestionWorker:
     Commits after each file for immediate visibility.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
+        ensure_index_ready: Callable[[], None] = ensure_search_index_ready,
+        ingest_file: Callable[[AsyncSession, Path], Awaitable] = ingest_bib_file,
+        bib_scanner: Callable[[Path], Iterable[Path]] = find_bib_files,
+    ):
         self.progress = IngestionProgress()
         self._task: Optional[asyncio.Task] = None
+        self._session_factory = session_factory
+        self._ensure_index_ready = ensure_index_ready
+        self._ingest_file = ingest_file
+        self._bib_scanner = bib_scanner
 
     @property
     def is_running(self) -> bool:
@@ -108,10 +121,10 @@ class IngestionWorker:
 
         try:
             # Ensure Meilisearch index exists
-            ensure_search_index_ready()
+            self._ensure_index_ready()
 
             # Collect all bib files
-            bib_files = list(find_bib_files(directory))
+            bib_files = list(self._bib_scanner(directory))
             self.progress.files_total = len(bib_files)
 
             logger.info(
@@ -155,13 +168,9 @@ class IngestionWorker:
         """Process a single bib file - parse, ingest, index, commit."""
         self.progress.current_file = bib_path.name
 
-        async with async_session() as session:
-            result = await ingest_bib_file(session, bib_path)
+        async with self._session_factory() as session:
+            result = await self._ingest_file(session, bib_path)
 
         self.progress.entries_errors += result.errors
         self.progress.entries_imported += result.imported_count
         logger.debug("Processed %s: %d entries", bib_path.name, result.total_parsed)
-
-
-# Global worker instance
-worker = IngestionWorker()

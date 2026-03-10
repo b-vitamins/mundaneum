@@ -67,25 +67,26 @@ async def import_user_state(
 
 
 @router.get("/ingest/status")
-async def get_ingest_status():
+async def get_ingest_status(request: Request):
     """
     Get current ingestion worker status.
 
     Returns progress information for background ingestion.
     """
-    return get_ingest_status_service()
+    return get_ingest_status_service(request.app.state.context.runtime)
 
 
 @router.post("/ingest/start")
 async def start_ingest(
     request: IngestRequest,
+    http_request: Request,
 ):
     """
     Manually trigger background ingestion.
 
     If already running, returns current status without restarting.
     """
-    return await start_ingest_service(request.directory)
+    return await start_ingest_service(http_request.app.state.context.runtime, request.directory)
 
 
 @router.get("/health", response_model=HealthResponse)

@@ -12,7 +12,7 @@ from app.config import settings
 from app.logging import get_logger
 from app.services.service_container import ServiceContainer
 from app.services.system_health import SystemHealthService
-from app.services.worker import worker as ingestion_worker
+from app.services.worker import IngestionWorker
 
 logger = get_logger(__name__)
 
@@ -28,20 +28,29 @@ class BackfillPolicy:
     batch_size: int
 
 
-class BackgroundSupervisor:
-    """Own the process background tasks and their scheduling policy."""
+class ManagedJob:
+    """Small protocol-style base for supervised background jobs."""
 
-    def __init__(
-        self,
-        *,
-        bibliography_path: Path,
-        backfill_policy: BackfillPolicy,
-        services: ServiceContainer,
-    ):
+    name: str
+
+    async def start(self) -> None:  # pragma: no cover - interface surface
+        raise NotImplementedError
+
+    async def stop(self) -> None:  # pragma: no cover - interface surface
+        raise NotImplementedError
+
+    def status(self) -> dict:  # pragma: no cover - interface surface
+        raise NotImplementedError
+
+
+class BibliographyIngestJob(ManagedJob):
+    """Supervise background bibliography ingestion."""
+
+    name = "bibliography_ingest"
+
+    def __init__(self, *, bibliography_path: Path, worker: IngestionWorker):
         self._bibliography_path = bibliography_path
-        self._backfill_policy = backfill_policy
-        self._services = services
-        self._backfill_task: asyncio.Task | None = None
+        self._worker = worker
 
     async def start(self) -> None:
         if self._bibliography_path.exists() and self._bibliography_path.is_dir():
@@ -49,27 +58,62 @@ class BackgroundSupervisor:
                 "Bibliography directory found, starting background ingestion from %s",
                 self._bibliography_path,
             )
-            await ingestion_worker.start(self._bibliography_path)
+            await self._worker.start(self._bibliography_path)
         else:
             logger.info(
                 "No bibliography directory at %s, skipping auto-ingest",
                 self._bibliography_path,
             )
 
-        self._backfill_task = asyncio.create_task(self._run_s2_backfill())
+    async def trigger(self, directory: Path | None = None) -> dict:
+        """Start ingestion manually or return current progress when already running."""
+        if self._worker.is_running:
+            return {"message": "Ingestion already running", **self.status()}
+
+        target_directory = directory or self._bibliography_path
+        await self._worker.start(target_directory)
+        return {"message": "Ingestion started", **self.status()}
 
     async def stop(self) -> None:
-        if self._backfill_task is not None:
-            self._backfill_task.cancel()
+        await self._worker.stop()
+
+    def status(self) -> dict:
+        return self._worker.get_status()
+
+
+class S2BackfillJob(ManagedJob):
+    """Supervise the S2 backfill loop separately from ingest."""
+
+    name = "s2_backfill"
+
+    def __init__(
+        self,
+        *,
+        services: ServiceContainer,
+        backfill_policy: BackfillPolicy,
+    ):
+        self._services = services
+        self._backfill_policy = backfill_policy
+        self._task: asyncio.Task | None = None
+
+    async def start(self) -> None:
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
             try:
-                await self._backfill_task
+                await self._task
             except asyncio.CancelledError:
                 pass
+            self._task = None
 
-        await self._services.s2_runtime.close()
-        await ingestion_worker.stop()
+    def status(self) -> dict:
+        running = self._task is not None and not self._task.done()
+        return {"status": "running" if running else "idle"}
 
-    async def _run_s2_backfill(self) -> None:
+    async def _run(self) -> None:
         await asyncio.sleep(self._backfill_policy.initial_delay_seconds)
         orchestrator = self._services.s2_runtime.orchestrator
         logger.info("S2 backfill loop started")
@@ -87,9 +131,30 @@ class BackgroundSupervisor:
                 await asyncio.sleep(delay)
             except asyncio.CancelledError:
                 break
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover - defensive logging
                 logger.error("S2 backfill error: %s", exc)
                 await asyncio.sleep(self._backfill_policy.error_delay_seconds)
+
+
+class BackgroundSupervisor:
+    """Own process background jobs and expose them through a registry."""
+
+    def __init__(self, jobs: list[ManagedJob]):
+        self._jobs = {job.name: job for job in jobs}
+
+    async def start(self) -> None:
+        for job in self._jobs.values():
+            await job.start()
+
+    async def stop(self) -> None:
+        for job in reversed(list(self._jobs.values())):
+            await job.stop()
+
+    def get_job(self, name: str) -> ManagedJob:
+        return self._jobs[name]
+
+    def snapshot(self) -> dict[str, dict]:
+        return {name: job.status() for name, job in self._jobs.items()}
 
 
 @dataclass(slots=True)
@@ -105,7 +170,11 @@ class AppRuntime:
 
     async def stop(self) -> None:
         await self.supervisor.stop()
+        await self.services.s2_runtime.close()
         await self.services.database.engine.dispose()
+
+    def get_job(self, name: str) -> ManagedJob:
+        return self.supervisor.get_job(name)
 
 
 def build_app_runtime(services: ServiceContainer) -> AppRuntime:
@@ -117,12 +186,20 @@ def build_app_runtime(services: ServiceContainer) -> AppRuntime:
         error_delay_seconds=settings.s2_backfill_error_delay_seconds,
         batch_size=settings.s2_backfill_batch_size,
     )
+    jobs: list[ManagedJob] = [
+        BibliographyIngestJob(
+            bibliography_path=bibliography_path,
+            worker=IngestionWorker(
+                session_factory=services.database.session_factory,
+            ),
+        ),
+        S2BackfillJob(
+            services=services,
+            backfill_policy=backfill_policy,
+        ),
+    ]
     return AppRuntime(
         services=services,
         health=SystemHealthService(bibliography_path=bibliography_path),
-        supervisor=BackgroundSupervisor(
-            bibliography_path=bibliography_path,
-            backfill_policy=backfill_policy,
-            services=services,
-        ),
+        supervisor=BackgroundSupervisor(jobs),
     )

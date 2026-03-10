@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.app_context import build_app_context
 from app.config import VERSION, settings
 from app.database import get_db
 from app.exceptions import MundaneumError
@@ -28,8 +29,6 @@ from app.routers import (
     topics,
     venues,
 )
-from app.runtime import build_app_runtime
-from app.services.service_container import build_service_container, set_service_container
 
 logger = get_logger(__name__)
 
@@ -67,9 +66,9 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
-app.state.services = build_service_container()
-set_service_container(app.state.services)
-app.state.runtime = build_app_runtime(app.state.services)
+app.state.context = build_app_context()
+app.state.services = app.state.context.services
+app.state.runtime = app.state.context.runtime
 
 # CORS middleware
 app.add_middleware(
