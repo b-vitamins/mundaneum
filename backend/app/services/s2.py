@@ -21,7 +21,7 @@ import enum
 import logging
 import time
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 import httpx
 from pydantic import ValidationError
@@ -34,7 +34,7 @@ from app.database import async_session
 from app.models import Entry, S2Citation, S2Paper
 from app.schemas.s2 import S2GraphResponse
 from app.schemas.s2 import S2Paper as S2PaperSchema
-from app.services.s2_corpus import get_data_source
+from app.services.s2_protocol import S2DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -408,10 +408,6 @@ class SQLAlchemyPaperStore:
 # ──────────────────────────────────────────────────────────
 
 
-# In-flight sync tracking (prevents duplicate concurrent syncs)
-_sync_locks: dict[str, asyncio.Event] = {}
-
-
 class SyncOrchestrator:
     """
     Composes transport, resolvers, and store into a single API.
@@ -425,10 +421,16 @@ class SyncOrchestrator:
         self,
         transport: S2Transport,
         resolvers: list[Resolver],
+        source: S2DataSource,
+        sync_registry,
+        session_factory: Callable[[], Any] = async_session,
         store_factory=None,
     ):
         self._transport = transport
         self._resolvers = resolvers
+        self._source = source
+        self._sync_registry = sync_registry
+        self._session_factory = session_factory
         self._store_factory = store_factory or (
             lambda session: SQLAlchemyPaperStore(session)
         )
@@ -443,48 +445,43 @@ class SyncOrchestrator:
         4. Fetch paper metadata + edges
         5. Return SYNCED or FAILED
         """
-        # Check if already syncing
-        if entry_id in _sync_locks:
+        if not await self._sync_registry.claim(entry_id):
             return SyncStatus.SYNCING
 
-        async with async_session() as session:
-            store = self._store_factory(session)
-            entry = await store.get_entry(entry_id)
-            if not entry:
-                logger.error(f"Entry {entry_id} not found")
-                return SyncStatus.FAILED
+        try:
+            async with self._session_factory() as session:
+                store = self._store_factory(session)
+                entry = await store.get_entry(entry_id)
+                if not entry:
+                    logger.error(f"Entry {entry_id} not found")
+                    return SyncStatus.FAILED
 
-            # Resolve S2 ID if missing
-            s2_id = entry.s2_id
-            if not s2_id:
-                s2_id = await self._resolve(entry)
+                # Resolve S2 ID if missing
+                s2_id = entry.s2_id
                 if not s2_id:
-                    logger.warning(f"Could not resolve S2 ID for '{entry.title[:40]}'")
-                    return SyncStatus.NO_MATCH
-                await store.set_entry_s2_id(entry_id, s2_id)
-                await store.commit()
+                    s2_id = await self._resolve(entry)
+                    if not s2_id:
+                        logger.warning(
+                            f"Could not resolve S2 ID for '{entry.title[:40]}'"
+                        )
+                        return SyncStatus.NO_MATCH
+                    await store.set_entry_s2_id(entry_id, s2_id)
+                    await store.commit()
 
-            # Check staleness
-            if not force and not await store.is_stale(
-                s2_id, settings.s2_staleness_days
-            ):
-                return SyncStatus.FRESH
+                # Check staleness
+                if not force and not await store.is_stale(
+                    s2_id, settings.s2_staleness_days
+                ):
+                    return SyncStatus.FRESH
 
-            # Mark as syncing
-            event = asyncio.Event()
-            _sync_locks[entry_id] = event
-
-            try:
-                status = await self._sync_paper(s2_id, store)
-                return status
-            finally:
-                _sync_locks.pop(entry_id, None)
-                event.set()
+                return await self._sync_paper(s2_id, store)
+        finally:
+            await self._sync_registry.release(entry_id)
 
     async def backfill(self, batch_size: int = 10) -> int:
         """Resolve and sync unresolved entries. Returns count resolved."""
         resolved = 0
-        async with async_session() as session:
+        async with self._session_factory() as session:
             store = self._store_factory(session)
             entries = await store.unresolved_entries(batch_size)
 
@@ -505,18 +502,17 @@ class SyncOrchestrator:
     async def _resolve(self, entry: Entry) -> str | None:
         """Try DuckDB first for instant resolution, then API resolvers."""
         # 1. Try local corpus first (sub-ms) for DOI and ArXiv
-        source = get_data_source()
-        if source:
+        if self._source:
             doi = _extract_id(entry, "doi")
             if doi:
-                s2_id = await source.resolve_id("DOI", doi)
+                s2_id = await self._source.resolve_id("DOI", doi)
                 if s2_id:
                     logger.info(f"Resolved '{entry.title[:40]}' via DuckDB DOI:{doi}")
                     return s2_id
 
             arxiv_id = _extract_id(entry, "arxiv", "eprint")
             if arxiv_id:
-                s2_id = await source.resolve_id("ArXiv", arxiv_id)
+                s2_id = await self._source.resolve_id("ArXiv", arxiv_id)
                 if s2_id:
                     logger.info(
                         f"Resolved '{entry.title[:40]}' via DuckDB ArXiv:{arxiv_id}"
@@ -539,9 +535,8 @@ class SyncOrchestrator:
     async def _sync_paper(self, s2_id: str, store: PaperStore) -> SyncStatus:
         """Sync paper metadata and edges — try DuckDB first, then API."""
         # 1. Try DuckDB for paper metadata (instant)
-        source = get_data_source()
-        if source:
-            record = await source.get_paper(s2_id)
+        if self._source:
+            record = await self._source.get_paper(s2_id)
             if record:
                 paper_record = {
                     "s2_id": record.s2_id or s2_id,
@@ -559,8 +554,8 @@ class SyncOrchestrator:
                 await store.upsert_paper(paper_record)
 
                 # Fetch edges from DuckDB too
-                cit_edges = await source.get_citations(s2_id) or []
-                ref_edges = await source.get_references(s2_id) or []
+                cit_edges = await self._source.get_citations(s2_id) or []
+                ref_edges = await self._source.get_references(s2_id) or []
 
                 papers: list[dict] = []
                 edges: list[dict] = []
@@ -786,6 +781,8 @@ async def resolve_entry_s2_id(
     if entry.s2_id:
         return entry.s2_id
 
+    from app.services.s2_runtime import SyncRegistry, get_s2_runtime
+
     orchestrator = SyncOrchestrator(
         transport=transport
         or S2Transport(
@@ -793,6 +790,8 @@ async def resolve_entry_s2_id(
             rate_limit=settings.s2_rate_limit,
         ),
         resolvers=resolvers or _default_resolvers(),
+        source=get_s2_runtime().data_source,
+        sync_registry=SyncRegistry(),
     )
     s2_id = await orchestrator._resolve(entry)
     if not s2_id:
@@ -811,28 +810,8 @@ async def upsert_s2_paper(session: AsyncSession, paper: S2PaperSchema) -> None:
     await store.commit()
 
 
-# ──────────────────────────────────────────────────────────
-# Factory — wires everything together
-# ──────────────────────────────────────────────────────────
-
-_orchestrator: SyncOrchestrator | None = None
-
-
 def get_sync_orchestrator() -> SyncOrchestrator:
-    """
-    Singleton factory for the sync orchestrator.
+    """Compatibility wrapper returning the runtime-owned orchestrator."""
+    from app.services.s2_runtime import get_s2_runtime
 
-    Lazy-creates the transport, resolver chain, and orchestrator
-    on first call. Subsequent calls return the same instance.
-    """
-    global _orchestrator
-    if _orchestrator is None:
-        transport = S2Transport(
-            api_key=settings.s2_api_key,
-            rate_limit=settings.s2_rate_limit,
-        )
-        _orchestrator = SyncOrchestrator(
-            transport=transport,
-            resolvers=_default_resolvers(),
-        )
-    return _orchestrator
+    return get_s2_runtime().orchestrator

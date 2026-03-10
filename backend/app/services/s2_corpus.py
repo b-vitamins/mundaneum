@@ -600,70 +600,22 @@ class ChainedSource:
         return None
 
 
-# ──────────────────────────────────────────────────────────
-# Factory — singleton data source
-# ──────────────────────────────────────────────────────────
-
-_data_source: ChainedSource | None = None
-_local_source: LocalCorpus | None = None
-
-
 def get_local_source() -> LocalCorpus | None:
-    """Return the LocalCorpus singleton (DuckDB only, no API fallback).
+    """Return the runtime-owned LocalCorpus instance.
 
     Used by graph construction where we want instant results from DuckDB
     without ever blocking on LiveAPI calls.
     """
-    global _local_source
-    if _local_source is not None:
-        return _local_source
+    from app.services.s2_runtime import get_s2_runtime
 
-    from app.config import settings
-
-    corpus_path = Path(settings.s2_corpus_path)
-    if corpus_path.exists():
-        try:
-            _local_source = LocalCorpus(corpus_path)
-            return _local_source
-        except Exception as e:
-            logger.warning("LocalCorpus failed to load: %s", e)
-            return None
-    return None
+    return get_s2_runtime().local_source
 
 
 def get_data_source() -> ChainedSource:
-    """Return the singleton ChainedSource.
+    """Return the runtime-owned chained data source.
 
     Chain: LocalCorpus (DuckDB, instant) → LiveAPI (S2 Transport, fallback).
-    Created lazily on first call.
     """
-    global _data_source
-    if _data_source is not None:
-        return _data_source
+    from app.services.s2_runtime import get_s2_runtime
 
-    from app.config import settings
-    from app.services.s2 import S2Transport
-
-    sources: list[S2DataSource] = []
-
-    # 1. Local corpus (DuckDB) — try first if the file exists
-    corpus_path = Path(settings.s2_corpus_path)
-    if corpus_path.exists():
-        try:
-            corpus = LocalCorpus(corpus_path)
-            sources.append(corpus)
-            logger.info("S2 data source: LocalCorpus loaded (%s)", corpus_path)
-        except Exception as e:
-            logger.warning("S2 data source: LocalCorpus failed to load: %s", e)
-    else:
-        logger.info(
-            "S2 data source: DuckDB not found at %s, using API only", corpus_path
-        )
-
-    # 2. Live API fallback
-    transport = S2Transport(api_key=settings.s2_api_key)
-    sources.append(LiveAPI(transport))
-    logger.info("S2 data source: LiveAPI registered (fallback)")
-
-    _data_source = ChainedSource(sources)
-    return _data_source
+    return get_s2_runtime().data_source

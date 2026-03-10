@@ -30,6 +30,7 @@ from app.routers import (
 )
 from app.services.sync import is_available as meili_available
 from app.services.worker import worker as ingestion_worker
+from app.services.s2_runtime import get_s2_runtime
 
 logger = get_logger(__name__)
 
@@ -69,12 +70,12 @@ async def lifespan(app: FastAPI):
         )
 
     # Start S2 backfill loop (resolves unsynced entries in background)
-    async def _s2_backfill_loop():
-        from app.services.s2 import get_sync_orchestrator
+    s2_runtime = get_s2_runtime()
 
+    async def _s2_backfill_loop():
         # Wait for ingestion to settle before starting backfill
         await asyncio.sleep(30)
-        orchestrator = get_sync_orchestrator()
+        orchestrator = s2_runtime.orchestrator
         logger.info("S2 backfill loop started")
 
         while True:
@@ -101,6 +102,7 @@ async def lifespan(app: FastAPI):
         await backfill_task
     except asyncio.CancelledError:
         pass
+    await s2_runtime.close()
     await ingestion_worker.stop()
     await engine.dispose()
 
