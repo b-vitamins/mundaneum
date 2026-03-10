@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import {
   catalogDetailPageModels,
-  type CatalogDetailItem,
   type CatalogEntityKey,
-  type CatalogEntryItem,
 } from '@/catalog/entityPageModels'
+import { useRouteResource } from '@/composables/useRouteResource'
 
 const props = defineProps<{
   entity: CatalogEntityKey
@@ -16,44 +15,22 @@ const props = defineProps<{
 const route = useRoute()
 const model = computed(() => catalogDetailPageModels[props.entity])
 
-const detail = ref<CatalogDetailItem | null>(null)
-const entries = ref<CatalogEntryItem[]>([])
-const loading = ref(true)
-const error = ref('')
-
 function routeValue(): string {
   return route.params[model.value.routeParam] as string
 }
 
-async function loadPage() {
-  const value = routeValue()
-  loading.value = true
-  error.value = ''
-  try {
-    const [detailData, entryData] = await Promise.all([
-      model.value.loadDetail(value),
-      model.value.loadEntries(value),
-    ])
-    detail.value = detailData
-    entries.value = entryData
-  } catch (loadError) {
-    console.error(`Failed to load ${props.entity} detail:`, loadError)
-    error.value = model.value.notFoundLabel
-  } finally {
-    loading.value = false
-  }
-}
+const { data, loading, error } = useRouteResource({
+  key: routeValue,
+  fetcher: async (value) => ({
+    detail: await model.value.loadDetail(value),
+    entries: await model.value.loadEntries(value),
+  }),
+})
 
-const title = computed(() => detail.value ? model.value.title(detail.value) : model.value.titleFallback)
-const statsLabel = computed(() => detail.value ? model.value.statsLabel(detail.value) : '')
-const badge = computed(() => detail.value ? model.value.badge?.(detail.value) ?? null : null)
-const secondaryLines = computed(() => detail.value ? model.value.secondaryLines?.(detail.value) ?? [] : [])
-
-onMounted(loadPage)
-watch(
-  () => route.params[model.value.routeParam],
-  loadPage,
-)
+const title = computed(() => data.value ? model.value.title(data.value.detail) : model.value.titleFallback)
+const statsLabel = computed(() => data.value ? model.value.statsLabel(data.value.detail) : '')
+const badge = computed(() => data.value ? model.value.badge?.(data.value.detail) ?? null : null)
+const secondaryLines = computed(() => data.value ? model.value.secondaryLines?.(data.value.detail) ?? [] : [])
 </script>
 
 <template>
@@ -62,9 +39,9 @@ watch(
       <span class="spinner"></span>
       {{ model.loadingLabel }}
     </div>
-    <div v-else-if="error" class="status error">{{ error }}</div>
+    <div v-else-if="error" class="status error">{{ model.notFoundLabel }}</div>
 
-    <div v-else-if="detail" class="detail-content">
+    <div v-else-if="data" class="detail-content">
       <div class="detail-header">
         <div class="title-row">
           <h1 class="detail-name">{{ title }}</h1>
@@ -76,10 +53,10 @@ watch(
 
       <section>
         <h2 class="section-title">{{ model.sectionTitle }}</h2>
-        <div v-if="entries.length === 0" class="empty">{{ model.emptyLabel }}</div>
+        <div v-if="data.entries.length === 0" class="empty">{{ model.emptyLabel }}</div>
         <div v-else class="entries-list">
           <router-link
-            v-for="entry in entries"
+            v-for="entry in data.entries"
             :key="entry.id"
             :to="`/entry/${entry.id}`"
             class="entry-row card card-hoverable"

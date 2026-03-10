@@ -1,56 +1,43 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, type EntryDetail, type Collection, type S2Meta, ApiError } from '@/api/client'
+import { api, type S2Meta } from '@/api/client'
 import CitationList from '@/components/CitationList.vue'
 import AppShell from '@/components/AppShell.vue'
-import { useProgressiveData } from '@/composables/useProgressiveData'
+import { useMutation } from '@/composables/useMutation'
+import { usePollingResource } from '@/composables/usePollingResource'
+import { useRouteResource } from '@/composables/useRouteResource'
 
 const route = useRoute()
-const entry = ref<EntryDetail | null>(null)
-const loading = ref(true)
-const error = ref('')
 const activeTab = ref('abstract')
 const notes = ref('')
-const notesSaved = ref(false)
-const collections = ref<Collection[]>([])
 const showCollectionMenu = ref(false)
 const bibtex = ref('')
-const showBibtex = ref(false)
-const actionLoading = ref(false)
 const showPdfViewer = ref(false)
 const pdfUrl = ref('')
 
-// S2 metadata with progressive loading
 const entryId = computed(() => route.params.id as string)
-const s2 = useProgressiveData<S2Meta>(
+
+const { data: entry, loading, error: entryLoadError } = useRouteResource({
+  key: () => entryId.value,
+  fetcher: (id) => api.getEntry(id),
+})
+
+const collectionsResource = usePollingResource(() => api.getCollections())
+const collections = computed(() => collectionsResource.data.value ?? [])
+
+const s2 = usePollingResource<S2Meta>(
   () => api.getEntryS2(entryId.value),
   { pollWhile: (d) => d.sync_status === 'syncing', interval: 5000, lazy: true }
 )
+
+const pageError = computed(() => entryLoadError.value ? 'Entry not found' : '')
 
 const mergedAbstract = computed(() => {
   if (entry.value?.abstract) return entry.value.abstract
   if (s2.ready.value && s2.data.value?.abstract) return s2.data.value.abstract
   return null
 })
-
-const fetchEntry = async () => {
-  loading.value = true
-  error.value = ''
-  try {
-    entry.value = await api.getEntry(route.params.id as string)
-    notes.value = entry.value.notes || ''
-    s2.fetch()
-  } catch (e) {
-    error.value = e instanceof ApiError ? (e.detail || 'Entry not found') : 'Failed to load entry'
-  } finally {
-    loading.value = false
-  }
-}
-
-const fetchCollections = async () => {
-  try { collections.value = await api.getCollections() } catch (e) { console.error(e) }
-}
 
 const handleClickOutside = (e: MouseEvent) => {
   if (!(e.target as HTMLElement).closest('.collection-dropdown')) showCollectionMenu.value = false
@@ -63,29 +50,109 @@ const openPdf = () => {
 const closePdf = () => { showPdfViewer.value = false; pdfUrl.value = '' }
 const handleKeydown = (e: KeyboardEvent) => { if (e.key === 'Escape' && showPdfViewer.value) closePdf() }
 
-onMounted(() => { fetchEntry(); fetchCollections(); document.addEventListener('click', handleClickOutside); document.addEventListener('keydown', handleKeydown) })
+watch(entryId, () => {
+  activeTab.value = 'abstract'
+  showCollectionMenu.value = false
+  closePdf()
+  s2.reset()
+})
+
+watch(entry, (currentEntry) => {
+  notes.value = currentEntry?.notes || ''
+  if (currentEntry) {
+    void s2.fetch()
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
 onUnmounted(() => { document.removeEventListener('click', handleClickOutside); document.removeEventListener('keydown', handleKeydown) })
+
+const toggleReadMutation = useMutation(
+  async () => {
+    if (!entry.value) throw new Error('Entry not loaded')
+    const nextRead = !entry.value.read
+    await api.toggleRead(entry.value.id, nextRead)
+    return nextRead
+  },
+  {
+    onSuccess: (nextRead) => {
+      if (entry.value) {
+        entry.value.read = nextRead
+      }
+    },
+  }
+)
+
+const saveNotesMutation = useMutation(
+  async () => {
+    if (!entry.value) throw new Error('Entry not loaded')
+    await api.updateNotes(entry.value.id, notes.value)
+    return notes.value
+  },
+  {
+    successMessage: 'Notes saved',
+    resetSuccessAfterMs: 2000,
+  }
+)
+
+const bibtexMutation = useMutation(
+  async () => {
+    if (!entry.value) throw new Error('Entry not loaded')
+    if (!bibtex.value) {
+      bibtex.value = await api.getBibtex(entry.value.id)
+    }
+    await navigator.clipboard.writeText(bibtex.value)
+    return bibtex.value
+  },
+  {
+    successMessage: 'Copied!',
+    resetSuccessAfterMs: 2000,
+  }
+)
+
+const collectionMutation = useMutation(
+  async (collectionId: string) => {
+    if (!entry.value) throw new Error('Entry not loaded')
+    await api.addToCollection(collectionId, entry.value.id)
+    return collectionId
+  },
+  {
+    onSuccess: () => {
+      showCollectionMenu.value = false
+    },
+  }
+)
+
+const actionLoading = computed(() =>
+  toggleReadMutation.pending.value ||
+  saveNotesMutation.pending.value ||
+  bibtexMutation.pending.value ||
+  collectionMutation.pending.value
+)
+const notesSaved = computed(() => Boolean(saveNotesMutation.success.value))
+const showBibtex = computed(() => Boolean(bibtexMutation.success.value))
 
 const toggleRead = async () => {
   if (!entry.value || actionLoading.value) return
-  actionLoading.value = true
-  try { await api.toggleRead(entry.value.id, !entry.value.read); entry.value.read = !entry.value.read }
+  try { await toggleReadMutation.execute() }
   catch (e) { console.error(e) }
-  finally { actionLoading.value = false }
 }
 const saveNotes = async () => {
   if (!entry.value) return
-  try { await api.updateNotes(entry.value.id, notes.value); notesSaved.value = true; setTimeout(() => notesSaved.value = false, 2000) }
+  try { await saveNotesMutation.execute() }
   catch (e) { console.error(e) }
 }
 const copyBibtex = async () => {
   if (!entry.value) return
-  try { if (!bibtex.value) bibtex.value = await api.getBibtex(entry.value.id); await navigator.clipboard.writeText(bibtex.value); showBibtex.value = true; setTimeout(() => showBibtex.value = false, 2000) }
+  try { await bibtexMutation.execute() }
   catch (e) { console.error(e) }
 }
 const addToCollection = async (collectionId: string) => {
   if (!entry.value) return
-  try { await api.addToCollection(collectionId, entry.value.id); showCollectionMenu.value = false }
+  try { await collectionMutation.execute(collectionId) }
   catch (e) { console.error(e) }
 }
 const allFields = computed(() => {
@@ -100,7 +167,7 @@ const allFields = computed(() => {
 <template>
   <AppShell back-to="/browse" back-label="Library">
     <div v-if="loading" class="status"><span class="spinner"></span> Loading...</div>
-    <div v-else-if="error" class="status error">{{ error }}</div>
+    <div v-else-if="pageError" class="status error">{{ pageError }}</div>
 
     <template v-else-if="entry">
       <article class="entry-article">
