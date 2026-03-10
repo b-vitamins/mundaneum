@@ -1,56 +1,20 @@
-"""
-Subject API endpoints.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Entry, EntryAuthor, Subject
+from app.routers.entity_common import (
+    apply_sort,
+    entity_entry_payload,
+    fetch_row_or_404,
+    paginate,
+)
+from app.schemas.entities import SubjectDetail, SubjectEntryItem, SubjectListItem
 
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
-
-
-# Response models
-class SubjectListItem(BaseModel):
-    """Response model for subject list items."""
-
-    id: str
-    slug: str
-    name: str
-    parent_slug: str | None = None
-    display_name: str | None = None
-    entry_count: int
-
-    model_config = {"from_attributes": True}
-
-
-class SubjectDetail(BaseModel):
-    """Response model for subject detail view."""
-
-    id: str
-    slug: str
-    name: str
-    entry_count: int
-
-
-class SubjectEntryItem(BaseModel):
-    """Response model for entries in a subject."""
-
-    id: str
-    citation_key: str
-    entry_type: str
-    title: str
-    year: int | None
-    authors: list[str]
-    venue: str | None
-    read: bool
-
-    model_config = {"from_attributes": True}
 
 
 @router.get("", response_model=list[SubjectListItem])
@@ -81,18 +45,16 @@ async def list_subjects(
         func.coalesce(entry_count_subq.c.entry_count, 0).label("entry_count"),
     ).outerjoin(entry_count_subq, Subject.id == entry_count_subq.c.id)
 
-    # Apply sorting
-    if sort_by == "entry_count":
-        order_col = entry_count_subq.c.entry_count
-    else:
-        order_col = Subject.name
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "name": Subject.name,
+            "entry_count": entry_count_subq.c.entry_count,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     rows = result.all()
@@ -128,11 +90,7 @@ async def get_subject(
         entry_count_subq.label("entry_count"),
     ).where(Subject.slug == slug)
 
-    result = await db.execute(query)
-    row = result.first()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Subject not found")
+    row = await fetch_row_or_404(db, query, detail="Subject not found")
 
     subject = row.Subject
     return SubjectDetail(
@@ -170,38 +128,19 @@ async def get_subject_entries(
         )
     )
 
-    # Apply sorting
-    if sort_by == "title":
-        order_col = Entry.title
-    elif sort_by == "created_at":
-        order_col = Entry.created_at
-    else:  # default to year
-        order_col = Entry.year
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "title": Entry.title,
+            "created_at": Entry.created_at,
+            "year": Entry.year,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     entries = result.scalars().all()
 
-    return [
-        SubjectEntryItem(
-            id=str(e.id),
-            citation_key=e.citation_key,
-            entry_type=e.entry_type.value,
-            title=e.title,
-            year=e.year,
-            authors=[a.author.name for a in e.authors],
-            venue=e.venue.name
-            if e.venue
-            else (
-                e.optional_fields.get("journal") or e.optional_fields.get("booktitle")
-            ),
-            read=e.read,
-        )
-        for e in entries
-    ]
+    return [SubjectEntryItem(**entity_entry_payload(entry)) for entry in entries]

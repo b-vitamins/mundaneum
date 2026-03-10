@@ -1,58 +1,20 @@
-"""
-Venue API endpoints.
-"""
-
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Entry, Venue, VenueCategory
+from app.models import Entry, EntryAuthor, Venue, VenueCategory
+from app.routers.entity_common import (
+    apply_sort,
+    fetch_row_or_404,
+    paginate,
+    venue_entry_payload,
+)
+from app.schemas.entities import VenueDetail, VenueEntryItem, VenueListItem
 
 
 router = APIRouter(prefix="/venues", tags=["venues"])
-
-
-# Response models
-class VenueListItem(BaseModel):
-    """Response model for venue list items."""
-
-    id: str
-    slug: str
-    name: str
-    category: str
-    entry_count: int
-
-    model_config = {"from_attributes": True}
-
-
-class VenueDetail(BaseModel):
-    """Response model for venue detail view."""
-
-    id: str
-    slug: str
-    name: str
-    category: str
-    aliases: list[str]
-    url: Optional[str]
-    entry_count: int
-
-
-class VenueEntryItem(BaseModel):
-    """Response model for entries in a venue."""
-
-    id: str
-    citation_key: str
-    entry_type: str
-    title: str
-    year: int | None
-    authors: list[str]
-    read: bool
-
-    model_config = {"from_attributes": True}
 
 
 @router.get("", response_model=list[VenueListItem])
@@ -61,7 +23,7 @@ async def list_venues(
     offset: int = 0,
     sort_by: str = "name",
     sort_order: str = "asc",
-    category: Optional[VenueCategory] = None,
+    category: VenueCategory | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> list[VenueListItem]:
     """
@@ -88,18 +50,16 @@ async def list_venues(
     if category:
         query = query.where(Venue.category == category)
 
-    # Apply sorting
-    if sort_by == "entry_count":
-        order_col = entry_count_subq.c.entry_count
-    else:
-        order_col = Venue.name
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "name": Venue.name,
+            "entry_count": entry_count_subq.c.entry_count,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     rows = result.all()
@@ -132,11 +92,7 @@ async def get_venue(
         entry_count_subq.label("entry_count"),
     ).where(Venue.slug == slug)
 
-    result = await db.execute(query)
-    row = result.first()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Venue not found")
+    row = await fetch_row_or_404(db, query, detail="Venue not found")
 
     venue = row.Venue
     return VenueDetail(
@@ -169,39 +125,21 @@ async def get_venue_entries(
     # Get entries
     query = select(Entry).where(Entry.venue_id == venue_id)
 
-    # Apply sorting
-    if sort_by == "title":
-        order_col = Entry.title
-    elif sort_by == "created_at":
-        order_col = Entry.created_at
-    else:  # default to year
-        order_col = Entry.year
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
-
-    # Eager load authors
-    from app.models import EntryAuthor
-    from sqlalchemy.orm import selectinload, joinedload
-
-    query = query.options(selectinload(Entry.authors).joinedload(EntryAuthor.author))
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "title": Entry.title,
+            "created_at": Entry.created_at,
+            "year": Entry.year,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset).options(
+        selectinload(Entry.authors).selectinload(EntryAuthor.author)
+    )
 
     result = await db.execute(query)
     entries = result.scalars().all()
 
-    return [
-        VenueEntryItem(
-            id=str(e.id),
-            citation_key=e.citation_key,
-            entry_type=e.entry_type.value,
-            title=e.title,
-            year=e.year,
-            authors=[a.author.name for a in e.authors],  # Assumes authors loaded
-            read=e.read,
-        )
-        for e in entries
-    ]
+    return [VenueEntryItem(**venue_entry_payload(entry)) for entry in entries]

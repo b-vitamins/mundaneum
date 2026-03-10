@@ -1,54 +1,19 @@
-"""
-Topic API endpoints.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Entry, EntryAuthor, Topic, EntryTopic
+from app.models import Entry, EntryAuthor, EntryTopic, Topic
+from app.routers.entity_common import (
+    apply_sort,
+    entity_entry_payload,
+    paginate,
+)
+from app.schemas.entities import TopicDetail, TopicEntryItem, TopicListItem
 
 
 router = APIRouter(prefix="/topics", tags=["topics"])
-
-
-# Response models
-class TopicListItem(BaseModel):
-    """Response model for topic list items."""
-
-    id: str
-    slug: str
-    name: str
-    entry_count: int
-
-    model_config = {"from_attributes": True}
-
-
-class TopicDetail(BaseModel):
-    """Response model for topic detail view."""
-
-    id: str
-    slug: str
-    name: str
-    entry_count: int
-
-
-class TopicEntryItem(BaseModel):
-    """Response model for entries in a topic."""
-
-    id: str
-    citation_key: str
-    entry_type: str
-    title: str
-    year: int | None
-    authors: list[str]
-    venue: str | None
-    read: bool
-
-    model_config = {"from_attributes": True}
 
 
 @router.get("", response_model=list[TopicListItem])
@@ -78,18 +43,16 @@ async def list_topics(
         func.coalesce(entry_count_subq.c.entry_count, 0).label("entry_count"),
     ).outerjoin(entry_count_subq, Topic.id == entry_count_subq.c.topic_id)
 
-    # Apply sorting
-    if sort_by == "entry_count":
-        order_col = entry_count_subq.c.entry_count
-    else:
-        order_col = Topic.name
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "name": Topic.name,
+            "entry_count": entry_count_subq.c.entry_count,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     rows = result.all()
@@ -158,38 +121,19 @@ async def get_topic_entries(
         )
     )
 
-    # Apply sorting
-    if sort_by == "title":
-        order_col = Entry.title
-    elif sort_by == "created_at":
-        order_col = Entry.created_at
-    else:  # default to year
-        order_col = Entry.year
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "title": Entry.title,
+            "created_at": Entry.created_at,
+            "year": Entry.year,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     entries = result.scalars().all()
 
-    return [
-        TopicEntryItem(
-            id=str(e.id),
-            citation_key=e.citation_key,
-            entry_type=e.entry_type.value,
-            title=e.title,
-            year=e.year,
-            authors=[a.author.name for a in e.authors],
-            venue=e.venue.name
-            if e.venue
-            else (
-                e.optional_fields.get("journal") or e.optional_fields.get("booktitle")
-            ),
-            read=e.read,
-        )
-        for e in entries
-    ]
+    return [TopicEntryItem(**entity_entry_payload(entry)) for entry in entries]

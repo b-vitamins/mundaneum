@@ -1,52 +1,21 @@
-"""
-Authors API endpoints.
-"""
-
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Author, Entry, EntryAuthor
+from app.routers.entity_common import (
+    apply_sort,
+    author_entry_payload,
+    fetch_row_or_404,
+    paginate,
+)
+from app.schemas.entities import AuthorDetail, AuthorEntryItem, AuthorListItem
 
 
 router = APIRouter(prefix="/authors", tags=["authors"])
-
-
-# Response models
-class AuthorListItem(BaseModel):
-    """Response model for author list items."""
-
-    id: str
-    name: str
-    entry_count: int
-
-    model_config = {"from_attributes": True}
-
-
-class AuthorDetail(BaseModel):
-    """Response model for author detail view."""
-
-    id: str
-    name: str
-    entry_count: int
-
-
-class AuthorEntryItem(BaseModel):
-    """Response model for entries by an author."""
-
-    id: str
-    citation_key: str
-    entry_type: str
-    title: str
-    year: int | None
-    venue: str | None
-    read: bool
-
-    model_config = {"from_attributes": True}
 
 
 @router.get("", response_model=list[AuthorListItem])
@@ -79,18 +48,16 @@ async def list_authors(
         func.coalesce(entry_count_subq.c.entry_count, 0).label("entry_count"),
     ).outerjoin(entry_count_subq, Author.id == entry_count_subq.c.author_id)
 
-    # Apply sorting
-    if sort_by == "entry_count":
-        order_col = entry_count_subq.c.entry_count
-    else:
-        order_col = Author.name
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "name": Author.name,
+            "entry_count": entry_count_subq.c.entry_count,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     rows = result.all()
@@ -124,11 +91,7 @@ async def get_author(
         entry_count_subq.label("entry_count"),
     ).where(Author.id == author_id)
 
-    result = await db.execute(query)
-    row = result.first()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Author not found")
+    row = await fetch_row_or_404(db, query, detail="Author not found")
 
     return AuthorDetail(
         id=str(row.id),
@@ -147,9 +110,8 @@ async def get_author_entries(
     db: AsyncSession = Depends(get_db),
 ) -> list[AuthorEntryItem]:
     """Get all entries by a specific author."""
-    # First check author exists
-    author_check = await db.execute(select(Author.id).where(Author.id == author_id))
-    if not author_check.first():
+    result = await db.execute(select(Author.id).where(Author.id == author_id))
+    if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Author not found")
 
     # Get entries via join
@@ -159,34 +121,19 @@ async def get_author_entries(
         .where(EntryAuthor.author_id == author_id)
     )
 
-    # Apply sorting
-    if sort_by == "title":
-        order_col = Entry.title
-    elif sort_by == "created_at":
-        order_col = Entry.created_at
-    else:  # default to year
-        order_col = Entry.year
-
-    if sort_order == "desc":
-        query = query.order_by(order_col.desc().nullslast())
-    else:
-        query = query.order_by(order_col.asc().nullsfirst())
-
-    query = query.offset(offset).limit(limit)
+    query = apply_sort(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        sort_columns={
+            "title": Entry.title,
+            "created_at": Entry.created_at,
+            "year": Entry.year,
+        },
+    )
+    query = paginate(query, limit=limit, offset=offset)
 
     result = await db.execute(query)
     entries = result.scalars().all()
 
-    return [
-        AuthorEntryItem(
-            id=str(e.id),
-            citation_key=e.citation_key,
-            entry_type=e.entry_type.value,
-            title=e.title,
-            year=e.year,
-            venue=e.optional_fields.get("journal")
-            or e.optional_fields.get("booktitle"),
-            read=e.read,
-        )
-        for e in entries
-    ]
+    return [AuthorEntryItem(**author_entry_payload(entry)) for entry in entries]
