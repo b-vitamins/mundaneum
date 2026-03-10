@@ -44,42 +44,50 @@ const router = createRouter({
         {
             path: '/authors',
             name: 'authors',
-            component: () => import('./views/Authors.vue')
+            component: () => import('./views/CatalogListPage.vue'),
+            props: { entity: 'authors' }
         },
         {
             path: '/authors/:id',
             name: 'author-detail',
-            component: () => import('./views/AuthorDetail.vue')
+            component: () => import('./views/CatalogDetailPage.vue'),
+            props: { entity: 'authors' }
         },
         {
             path: '/venues',
             name: 'venues',
-            component: () => import('./views/Venues.vue')
+            component: () => import('./views/CatalogListPage.vue'),
+            props: { entity: 'venues' }
         },
         {
             path: '/venues/:slug',
             name: 'venue-detail',
-            component: () => import('./views/VenueDetail.vue')
+            component: () => import('./views/CatalogDetailPage.vue'),
+            props: { entity: 'venues' }
         },
         {
             path: '/subjects',
             name: 'subjects',
-            component: () => import('./views/Subjects.vue')
+            component: () => import('./views/CatalogListPage.vue'),
+            props: { entity: 'subjects' }
         },
         {
             path: '/subjects/:slug',
             name: 'subject-detail',
-            component: () => import('./views/SubjectDetail.vue')
+            component: () => import('./views/CatalogDetailPage.vue'),
+            props: { entity: 'subjects' }
         },
         {
             path: '/topics',
             name: 'topics',
-            component: () => import('./views/Topics.vue')
+            component: () => import('./views/CatalogListPage.vue'),
+            props: { entity: 'topics' }
         },
         {
             path: '/topics/:slug',
             name: 'topic-detail',
-            component: () => import('./views/TopicDetail.vue')
+            component: () => import('./views/CatalogDetailPage.vue'),
+            props: { entity: 'topics' }
         }
     ]
 })
