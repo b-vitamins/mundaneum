@@ -1,105 +1,23 @@
 <script setup lang="ts">
-import { computed, ref, watch, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import {
-  api,
-  type SearchHit,
-  type SearchStatus,
-  type SearchWarning,
-} from '@/api/client'
 import AppShell from '@/components/AppShell.vue'
-import {
-  buildSearchRequest,
-  buildSearchRouteQuery,
-  defaultSearchFilters,
-  lastSearchWarning,
-  primarySearchWarning,
-  readSearchQuery,
-  type SearchFilterForm,
-} from '@/features/search/model'
+import { useSearchController } from '@/features/search/useSearchController'
 
-const route = useRoute()
-const router = useRouter()
-
-const initialSearch = readSearchQuery(route.query)
-const query = ref(initialSearch.query)
-const results = ref<SearchHit[]>([])
-const total = ref(0)
-const loading = ref(false)
-const error = ref('')
-const status = ref<SearchStatus>('ok')
-const warnings = ref<SearchWarning[]>([])
-
-const showFilters = ref(false)
-const filters = ref<SearchFilterForm>(initialSearch.filters)
-const entryTypes = ['article', 'book', 'inproceedings', 'phdthesis', 'techreport', 'misc']
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-async function search() {
-  if (!query.value.trim()) {
-    results.value = []
-    total.value = 0
-    status.value = 'ok'
-    warnings.value = []
-    error.value = ''
-    return
-  }
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await api.search(buildSearchRequest(query.value, filters.value))
-    status.value = data.status
-    warnings.value = data.warnings
-    results.value = data.hits
-    total.value = data.total
-  } catch (e) {
-    console.error('Search failed:', e)
-    error.value = 'Search failed'
-    status.value = 'unavailable'
-    warnings.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-function debouncedSearch() {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
-    search()
-  }, 300)
-}
-
-watch(() => route.query, (newQuery) => {
-  const nextSearch = readSearchQuery(newQuery)
-  query.value = nextSearch.query
-  filters.value = nextSearch.filters
-  search()
-}, { immediate: true })
-
-watch(query, () => { debouncedSearch() })
-
-onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
-
-function handleSearch() {
-  router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
-  search()
-}
-
-function applyFilters() {
-  router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
-  search()
-}
-
-function clearFilters() {
-  filters.value = defaultSearchFilters()
-  router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
-  search()
-}
-
-const partialWarning = computed(() => primarySearchWarning(warnings.value))
-const unavailableDetail = computed(() => lastSearchWarning(warnings.value))
+const {
+  applyFilters,
+  clearFilters,
+  entryTypes,
+  error,
+  filters,
+  handleSearch,
+  partialWarning,
+  query,
+  results,
+  showFilters,
+  status,
+  total,
+  unavailableDetail,
+  viewState,
+} = useSearchController()
 </script>
 
 <template>
@@ -174,21 +92,21 @@ const unavailableDetail = computed(() => lastSearchWarning(warnings.value))
           <span class="results-count">{{ total.toLocaleString() }} results</span>
         </div>
 
-        <div v-if="status === 'partial' && !loading && !error" class="status warning">
+        <div v-if="status === 'partial' && viewState === 'results'" class="status warning">
           <p>{{ partialWarning || 'Full-text search is unavailable. Showing degraded database results.' }}</p>
         </div>
 
-        <div v-if="loading" class="status">
+        <div v-if="viewState === 'loading'" class="status">
           <span class="spinner"></span>
           Searching...
         </div>
-        <p v-else-if="error" class="status error">{{ error }}</p>
-        <div v-else-if="status === 'unavailable'" class="status error">
+        <p v-else-if="viewState === 'error'" class="status error">{{ error }}</p>
+        <div v-else-if="viewState === 'unavailable'" class="status error">
           <p>Search is temporarily unavailable.</p>
           <p v-if="unavailableDetail" class="status-detail">{{ unavailableDetail }}</p>
         </div>
-        <p v-else-if="results.length === 0 && query" class="status">No results found</p>
-        <p v-else-if="!query" class="status empty-state">Enter a search term to find papers</p>
+        <p v-else-if="viewState === 'empty'" class="status">No results found</p>
+        <p v-else-if="viewState === 'idle'" class="status empty-state">Enter a search term to find papers</p>
 
         <div class="results-list">
           <router-link

@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type GraphData, type GraphNode } from '@/api/client'
 import { useForceGraph } from '@/composables/useForceGraph'
+import type { GraphOverlayState, GraphExplorerTab } from '@/features/graph/types'
 import {
   buildYearHistogram,
   formatGraphAuthors,
@@ -25,7 +26,7 @@ export function useGraphExplorer() {
   const fullGraphData = ref<GraphData | null>(null)
   const showPanel = ref(true)
   const graphData = ref<GraphData | null>(null)
-  const activeTab = ref<'graph' | 'prior' | 'derivative'>('graph')
+  const activeTab = ref<GraphExplorerTab>('graph')
   const filterKeyword = ref('')
   const yearMin = ref(1990)
   const yearMax = ref(2026)
@@ -134,6 +135,11 @@ export function useGraphExplorer() {
     }
   }
 
+  function closePanel() {
+    graph.selectedNode.value = null
+    showPanel.value = false
+  }
+
   function formatAuthors(authors: string[]): string {
     return formatGraphAuthors(authors)
   }
@@ -179,9 +185,17 @@ export function useGraphExplorer() {
     }, 200)
   })
 
+  const overlayState = computed<GraphOverlayState>(() => {
+    if (loading.value) return 'loading'
+    if (syncing.value) return 'syncing'
+    if (error.value) return 'error'
+    return null
+  })
+
   return {
     activeTab,
     canvasRef,
+    closePanel,
     depth,
     entryId,
     error,
@@ -196,11 +210,19 @@ export function useGraphExplorer() {
     loading,
     maxHistCount,
     maxNodes,
+    overlayState,
     openOnS2,
     recenterOn,
     router,
+    selectedNode: graph.selectedNode,
     showPanel,
     syncing,
+    hoveredNode: graph.hoveredNode,
+    setViewMode: graph.setViewMode,
+    resetView: graph.resetView,
+    zoomIn: graph.zoomIn,
+    zoomOut: graph.zoomOut,
+    viewMode: graph.viewMode,
     yearHistogram,
     yearMax,
     yearMin,
