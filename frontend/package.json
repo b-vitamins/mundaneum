@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "vite",
         "build": "npm run typecheck && vite build",
+        "generate:api": "node ./scripts/generate-api-types.mjs",
         "preview": "vite preview",
         "test": "vitest run",
         "typecheck": "vue-tsc --noEmit"
@@ -17,6 +18,7 @@
     },
     "devDependencies": {
         "@vitejs/plugin-vue": "^5.0.3",
+        "openapi-typescript": "^7.10.1",
         "typescript": "^5.3.3",
         "vite": "^5.0.12",
         "vitest": "^4.0.18",

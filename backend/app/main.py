@@ -29,6 +29,7 @@ from app.routers import (
     topics,
     venues,
 )
+from app.schemas.system import StatsResponse
 
 logger = get_logger(__name__)
 
@@ -121,7 +122,7 @@ async def health(request: Request):
     return (await request.app.state.runtime.health.get_report()).public_payload()
 
 
-@app.get("/api/stats")
+@app.get("/api/stats", response_model=StatsResponse)
 async def stats(db: AsyncSession = Depends(get_db)):
     """Get library statistics."""
     entries_count = await db.scalar(select(func.count(Entry.id))) or 0
