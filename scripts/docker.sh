@@ -15,7 +15,7 @@ S2_DATA_DIR="${S2_DATA_DIR:-/data/s2}"  # DuckDB S2 corpus
 NETWORK_NAME="mundaneum-net"
 
 # Get real Docker CLI (Guix wraps 'docker' as podman)
-DOCKER="guix shell docker-cli -- docker"
+DOCKER="${DOCKER_CMD:-guix shell docker-cli -- docker}"
 
 show_help() {
     echo "Mundaneum Docker Management"
@@ -37,6 +37,7 @@ show_help() {
     echo "  MEILI_PORT         Meilisearch port (default: 17700)"
     echo "  POSTGRES_PASSWORD  Database password (default: mundaneum)"
     echo "  BIB_DIRECTORY      Path to BibTeX files (default: ./data)"
+    echo "  DOCKER_CMD         Docker command override (default: guix shell docker-cli -- docker)"
     echo ""
 }
 

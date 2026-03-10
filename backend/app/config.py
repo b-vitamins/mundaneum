@@ -2,6 +2,7 @@
 Application configuration using Pydantic Settings.
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Application version
@@ -61,6 +62,14 @@ class Settings(BaseSettings):
     s2_minio_bucket: str = "s2-corpus"
     s2_qdrant_url: str = "http://localhost:6333"
     s2_qdrant_api_key: str | None = None
+
+    @field_validator("meili_api_key", "s2_api_key", "s2_qdrant_api_key", mode="before")
+    @classmethod
+    def blank_optional_values_are_none(cls, value: str | None) -> str | None:
+        """Normalize empty env-file secrets to None instead of empty strings."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     @property
     def cors_origins_list(self) -> list[str]:
