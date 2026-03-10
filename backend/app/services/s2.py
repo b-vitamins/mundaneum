@@ -92,7 +92,7 @@ async def resolve_entry_s2_id(
         resolvers=resolvers,
         session_factory=session_factory,
     )
-    s2_id = await orchestrator._resolve(entry)
+    s2_id = await orchestrator.resolve_entry(entry)
     if not s2_id:
         return None
 
