@@ -1,18 +1,7 @@
-import asyncio
-
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Keep one loop alive for the whole suite until pytest-asyncio is upgraded."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture
