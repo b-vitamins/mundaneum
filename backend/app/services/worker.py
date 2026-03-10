@@ -12,17 +12,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.database import async_session
 from app.logging import get_logger
-from app.services.parser import find_bib_files, parse_bib_file
-from app.services.sync import MeilisearchUnavailableError, ensure_index, sync_entries
-
-
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from app.models import Entry, EntryAuthor
+from app.services.ingest import ensure_search_index_ready, ingest_bib_file
+from app.services.parser import find_bib_files
 
 logger = get_logger(__name__)
 
@@ -115,10 +108,7 @@ class IngestionWorker:
 
         try:
             # Ensure Meilisearch index exists
-            try:
-                ensure_index()
-            except MeilisearchUnavailableError:
-                logger.warning("Meilisearch unavailable, search will not be updated")
+            ensure_search_index_ready()
 
             # Collect all bib files
             bib_files = list(find_bib_files(directory))
@@ -165,68 +155,12 @@ class IngestionWorker:
         """Process a single bib file - parse, ingest, index, commit."""
         self.progress.current_file = bib_path.name
 
-        # Parse file
-        entries_data = parse_bib_file(bib_path)
-        if not entries_data:
-            return
-
-        imported_ids = []
-
-        # Import to database
         async with async_session() as session:
-            imported_entries = await self._ingest_entries(session, entries_data)
+            result = await ingest_bib_file(session, bib_path)
 
-            if imported_entries:
-                # Collect IDs before commit
-                imported_ids = [e.id for e in imported_entries]
-
-                # Commit this file's entries
-                await session.commit()
-
-        # Sync to Meilisearch (in separate read-only transaction with eager loading)
-        if imported_ids:
-            try:
-                async with async_session() as session:
-                    stmt = (
-                        select(Entry)
-                        .options(
-                            selectinload(Entry.authors).selectinload(EntryAuthor.author)
-                        )
-                        .where(Entry.id.in_(imported_ids))
-                    )
-                    result = await session.execute(stmt)
-                    entries_to_sync = result.scalars().all()
-
-                    sync_entries(entries_to_sync)
-            except MeilisearchUnavailableError:
-                pass  # Already warned at startup
-            except Exception as e:
-                logger.warning("Failed to index entries from %s: %s", bib_path.name, e)
-
-        logger.debug("Processed %s: %d entries", bib_path.name, len(entries_data))
-
-    async def _ingest_entries(
-        self, session: AsyncSession, entries_data: list[dict]
-    ) -> list:
-        """Ingest entries from parsed data, return imported Entry objects."""
-        from app.services.ingest import ingest_entry
-
-        imported = []
-        for entry_data in entries_data:
-            try:
-                entry = await ingest_entry(session, entry_data)
-                if entry:
-                    imported.append(entry)
-                    self.progress.entries_imported += 1
-            except Exception as e:
-                logger.warning(
-                    "Failed to ingest %s: %s",
-                    entry_data.get("citation_key", "unknown"),
-                    e,
-                )
-                self.progress.entries_errors += 1
-
-        return imported
+        self.progress.entries_errors += result.errors
+        self.progress.entries_imported += result.imported_count
+        logger.debug("Processed %s: %d entries", bib_path.name, result.total_parsed)
 
 
 # Global worker instance
