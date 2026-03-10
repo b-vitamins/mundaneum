@@ -2,6 +2,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type GraphData, type GraphNode } from '@/api/client'
 import { useForceGraph } from '@/composables/useForceGraph'
+import {
+  buildYearHistogram,
+  formatGraphAuthors,
+  formatGraphCount,
+  getYearBounds,
+  matchesGraphFilter,
+  sliceGraphData,
+} from '@/graph/data'
 
 export function useGraphExplorer() {
   const route = useRoute()
@@ -28,35 +36,13 @@ export function useGraphExplorer() {
   let filterTimer: ReturnType<typeof setTimeout> | null = null
 
   const yearHistogram = computed(() => {
-    if (!graphData.value) return []
-    const counts: Record<number, number> = {}
-    for (const node of graphData.value.nodes) {
-      if (node.year) counts[node.year] = (counts[node.year] || 0) + 1
-    }
-    const histogram: { year: number; count: number }[] = []
-    for (let year = yearMin.value; year <= yearMax.value; year += 1) {
-      histogram.push({ year, count: counts[year] || 0 })
-    }
-    return histogram
+    return buildYearHistogram(graphData.value, yearMin.value, yearMax.value)
   })
 
   const maxHistCount = computed(() => Math.max(1, ...yearHistogram.value.map(item => item.count)))
 
   const sliceAndLoad = (data: GraphData, nodeCount: number) => {
-    const centerNode = data.nodes.find(node => node.id === data.center_id)
-    const otherNodes = data.nodes.filter(node => node.id !== data.center_id)
-    const nodes = centerNode
-      ? [centerNode, ...otherNodes.slice(0, nodeCount - 1)]
-      : otherNodes.slice(0, nodeCount)
-    const nodeIds = new Set(nodes.map(node => node.id))
-
-    const slicedData: GraphData = {
-      ...data,
-      nodes,
-      edges: data.edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
-      similarity_edges: data.similarity_edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
-    }
-
+    const slicedData = sliceGraphData(data, nodeCount)
     graphData.value = slicedData
     graph.loadData(slicedData)
   }
@@ -75,12 +61,12 @@ export function useGraphExplorer() {
         return
       }
 
-      const years = data.nodes.map(node => node.year).filter(Boolean) as number[]
-      if (years.length > 0) {
-        yearMin.value = Math.min(...years)
-        yearMax.value = Math.max(...years)
-        filterYearMin.value = yearMin.value
-        filterYearMax.value = yearMax.value
+      const bounds = getYearBounds(data)
+      if (bounds) {
+        yearMin.value = bounds.min
+        yearMax.value = bounds.max
+        filterYearMin.value = bounds.min
+        filterYearMax.value = bounds.max
       }
 
       sliceAndLoad(data, maxNodes.value)
@@ -103,12 +89,12 @@ export function useGraphExplorer() {
     }
 
     graph.setFilter(node => {
-      if (node.year && (node.year < filterYearMin.value || node.year > filterYearMax.value)) return false
-      if (keyword) {
-        const text = [node.title, ...node.authors, node.venue || ''].join(' ').toLowerCase()
-        if (!text.includes(keyword)) return false
-      }
-      return true
+      return matchesGraphFilter(
+        node,
+        keyword,
+        filterYearMin.value,
+        filterYearMax.value
+      )
     })
   }
 
@@ -149,14 +135,11 @@ export function useGraphExplorer() {
   }
 
   function formatAuthors(authors: string[]): string {
-    if (authors.length <= 3) return authors.join(', ')
-    return `${authors.slice(0, 3).join(', ')} +${authors.length - 3}`
+    return formatGraphAuthors(authors)
   }
 
   function fmtCount(value: number): string {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
-    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`
-    return value.toString()
+    return formatGraphCount(value)
   }
 
   graph.onNodeClick(() => {

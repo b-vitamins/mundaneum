@@ -1,5 +1,6 @@
 import { onUnmounted, ref, type Ref } from 'vue'
 import type { GraphData, GraphNode } from '@/api/client'
+import { createCanvasInteractionController } from '@/graph/interactions'
 import { ForceLayout } from '@/graph/layout'
 import { CanvasRenderer } from '@/graph/renderer'
 import {
@@ -33,24 +34,23 @@ export function useForceGraph() {
 
   const camera: Camera = { x: 0, y: 0, zoom: 1 }
 
-  let isDragging = false
-  let dragStartX = 0
-  let dragStartY = 0
-  let cameraStartX = 0
-  let cameraStartY = 0
   let onClickCb: ((node: GraphNode) => void) | null = null
   let onDblClickCb: ((node: GraphNode) => void) | null = null
+
+  const interactions = createCanvasInteractionController({
+    camera,
+    hoveredNode: hoveredNode as Ref<GraphNode | null>,
+    selectedNode: selectedNode as Ref<GraphNode | null>,
+    renderer,
+    getNodes: () => simNodes,
+    onNodeClick: () => onClickCb,
+    onNodeDblClick: () => onDblClickCb,
+  })
 
   function init(cvs: HTMLCanvasElement) {
     canvas = cvs
     renderer.init(canvas)
-    canvas.addEventListener('mousedown', onMouseDown)
-    canvas.addEventListener('mousemove', onMouseMove)
-    canvas.addEventListener('mouseup', onMouseUp)
-    canvas.addEventListener('mouseleave', onMouseLeave)
-    canvas.addEventListener('wheel', onWheel, { passive: false })
-    canvas.addEventListener('dblclick', onDblClick)
-    window.addEventListener('resize', onResize)
+    interactions.bind(canvas)
   }
 
   function buildEdges(mode: ViewMode) {
@@ -119,60 +119,6 @@ export function useForceGraph() {
     return simNodes
   }
 
-  function onMouseDown(event: MouseEvent) {
-    const hit = renderer.hitTest(event.offsetX, event.offsetY, simNodes, camera)
-    if (hit) {
-      selectedNode.value = hit.data
-      if (onClickCb) onClickCb(hit.data)
-      return
-    }
-
-    isDragging = true
-    dragStartX = event.clientX
-    dragStartY = event.clientY
-    cameraStartX = camera.x
-    cameraStartY = camera.y
-    if (canvas) canvas.style.cursor = 'grabbing'
-  }
-
-  function onMouseMove(event: MouseEvent) {
-    if (isDragging) {
-      camera.x = cameraStartX + (event.clientX - dragStartX) / camera.zoom
-      camera.y = cameraStartY + (event.clientY - dragStartY) / camera.zoom
-      return
-    }
-
-    const hit = renderer.hitTest(event.offsetX, event.offsetY, simNodes, camera)
-    hoveredNode.value = hit ? hit.data : null
-    if (canvas) canvas.style.cursor = hit ? 'pointer' : 'grab'
-  }
-
-  function onMouseUp() {
-    isDragging = false
-    if (canvas) canvas.style.cursor = 'grab'
-  }
-
-  function onMouseLeave() {
-    isDragging = false
-    hoveredNode.value = null
-  }
-
-  function onWheel(event: WheelEvent) {
-    event.preventDefault()
-    camera.zoom = Math.max(0.1, Math.min(5, camera.zoom * (event.deltaY > 0 ? 0.9 : 1.1)))
-  }
-
-  function onDblClick(event: MouseEvent) {
-    const hit = renderer.hitTest(event.offsetX, event.offsetY, simNodes, camera)
-    if (hit && onDblClickCb) onDblClickCb(hit.data)
-  }
-
-  function onResize() {
-    if (renderer instanceof CanvasRenderer && canvas) {
-      renderer.resize()
-    }
-  }
-
   function onNodeClick(cb: (node: GraphNode) => void) {
     onClickCb = cb
   }
@@ -182,17 +128,15 @@ export function useForceGraph() {
   }
 
   function resetView() {
-    camera.x = 0
-    camera.y = 0
-    camera.zoom = 1
+    interactions.resetView()
   }
 
   function zoomIn() {
-    camera.zoom = Math.min(5, camera.zoom * 1.2)
+    interactions.zoomIn()
   }
 
   function zoomOut() {
-    camera.zoom = Math.max(0.1, camera.zoom / 1.2)
+    interactions.zoomOut()
   }
 
   function destroy() {
@@ -200,16 +144,7 @@ export function useForceGraph() {
     if (animId) cancelAnimationFrame(animId)
     layout.destroy()
     renderer.destroy()
-
-    if (canvas) {
-      canvas.removeEventListener('mousedown', onMouseDown)
-      canvas.removeEventListener('mousemove', onMouseMove)
-      canvas.removeEventListener('mouseup', onMouseUp)
-      canvas.removeEventListener('mouseleave', onMouseLeave)
-      canvas.removeEventListener('wheel', onWheel)
-      canvas.removeEventListener('dblclick', onDblClick)
-    }
-    window.removeEventListener('resize', onResize)
+    interactions.unbind()
   }
 
   onUnmounted(destroy)
