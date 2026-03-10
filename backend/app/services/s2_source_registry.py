@@ -15,19 +15,20 @@ class ChainedSource:
     def __init__(self, sources: list[S2DataSource]):
         self._sources = sources
 
-    async def get_paper(self, s2_id: str) -> PaperRecord | None:
+    async def first_result(self, operation) -> object | None:
         for source in self._sources:
-            result = await source.get_paper(s2_id)
+            result = await operation(source)
             if result is not None:
                 return result
         return None
 
+    async def get_paper(self, s2_id: str) -> PaperRecord | None:
+        return await self.first_result(lambda source: source.get_paper(s2_id))
+
     async def get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
-        for source in self._sources:
-            result = await source.get_paper_by_corpus_id(corpus_id)
-            if result is not None:
-                return result
-        return None
+        return await self.first_result(
+            lambda source: source.get_paper_by_corpus_id(corpus_id)
+        )
 
     async def get_references(
         self,
@@ -35,11 +36,9 @@ class ChainedSource:
         *,
         limit: int | None = None,
     ) -> list[EdgeRecord] | None:
-        for source in self._sources:
-            result = await source.get_references(s2_id, limit=limit)
-            if result is not None:
-                return result
-        return None
+        return await self.first_result(
+            lambda source: source.get_references(s2_id, limit=limit)
+        )
 
     async def get_citations(
         self,
@@ -47,32 +46,20 @@ class ChainedSource:
         *,
         limit: int | None = None,
     ) -> list[EdgeRecord] | None:
-        for source in self._sources:
-            result = await source.get_citations(s2_id, limit=limit)
-            if result is not None:
-                return result
-        return None
+        return await self.first_result(
+            lambda source: source.get_citations(s2_id, limit=limit)
+        )
 
     async def resolve_id(self, id_type: str, identifier: str) -> str | None:
-        for source in self._sources:
-            result = await source.resolve_id(id_type, identifier)
-            if result is not None:
-                return result
-        return None
+        return await self.first_result(
+            lambda source: source.resolve_id(id_type, identifier)
+        )
 
     async def search(self, query: str, limit: int = 10) -> list[PaperRecord] | None:
-        for source in self._sources:
-            result = await source.search(query, limit=limit)
-            if result is not None:
-                return result
-        return None
+        return await self.first_result(lambda source: source.search(query, limit=limit))
 
     async def get_reference_ids(self, s2_id: str) -> set[str] | None:
-        for source in self._sources:
-            result = await source.get_reference_ids(s2_id)
-            if result is not None:
-                return result
-        return None
+        return await self.first_result(lambda source: source.get_reference_ids(s2_id))
 
 
 class S2SourceRegistry:
@@ -99,3 +86,20 @@ class S2SourceRegistry:
 
     def chain(self) -> ChainedSource:
         return ChainedSource(self.ordered_sources())
+
+
+class SourceRegistry:
+    """Compatibility registry for unnamed source chains."""
+
+    def __init__(self, sources: Iterable[S2DataSource] | None = None):
+        self._sources = list(sources or [])
+
+    def register(self, source: S2DataSource) -> S2DataSource:
+        self._sources.append(source)
+        return source
+
+    async def first_result(self, operation) -> object | None:
+        return await ChainedSource(self._sources).first_result(operation)
+
+    def chain(self) -> ChainedSource:
+        return ChainedSource(self._sources)

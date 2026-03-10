@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,8 +22,8 @@ from app.services.s2_corpus_queries import (
     RESOLVE_EXTERNAL_ID_QUERY,
     SHA_TO_CORPUS_ID_QUERY,
     TLDR_BY_CORPUS_ID_QUERY,
-    DuckDBQuerySpec,
 )
+from app.services.s2_corpus_store import DuckDBCorpusStore
 from app.services.s2_protocol import EdgeRecord, PaperRecord
 
 if TYPE_CHECKING:
@@ -44,79 +43,14 @@ class LocalCorpus:
 
     def __init__(self, db_path: str | Path):
         self._db_path = Path(db_path)
-        self._local = threading.local()
-
-    def _get_conn(self):
-        conn = getattr(self._local, "conn", None)
-        if conn is not None:
-            return conn
-        if not self._db_path.exists():
-            logger.info("LocalCorpus: DuckDB not found at %s", self._db_path)
-            return None
-
-        import duckdb
-
-        conn = duckdb.connect(str(self._db_path), read_only=True)
-        self._local.conn = conn
-        logger.info(
-            "LocalCorpus: connected to %s (thread %s)",
-            self._db_path,
-            threading.current_thread().name,
-        )
-        return conn
-
-    def _fetchone(
-        self,
-        query: DuckDBQuerySpec,
-        params: list[object],
-        *,
-        limit: int | None = None,
-    ):
-        conn = self._get_conn()
-        if conn is None:
-            return None
-        try:
-            statement = query.render(value_count=len(params), limit=limit)
-            return conn.execute(statement, query.bind(params, limit=limit)).fetchone()
-        except Exception:
-            if query.fallback_sql is None:
-                raise
-            statement = query.render(
-                use_fallback=True,
-                value_count=len(params),
-                limit=limit,
-            )
-            return conn.execute(statement, query.bind(params, limit=limit)).fetchone()
-
-    def _fetchall(
-        self,
-        query: DuckDBQuerySpec,
-        params: list[object],
-        *,
-        limit: int | None = None,
-    ):
-        conn = self._get_conn()
-        if conn is None:
-            return []
-        try:
-            statement = query.render(value_count=len(params), limit=limit)
-            return conn.execute(statement, query.bind(params, limit=limit)).fetchall()
-        except Exception:
-            if query.fallback_sql is None:
-                raise
-            statement = query.render(
-                use_fallback=True,
-                value_count=len(params),
-                limit=limit,
-            )
-            return conn.execute(statement, query.bind(params, limit=limit)).fetchall()
+        self._store = DuckDBCorpusStore(self._db_path)
 
     def _sha_to_corpus_id(self, s2_id: str) -> int | None:
-        row = self._fetchone(SHA_TO_CORPUS_ID_QUERY, [s2_id])
+        row = self._store.fetchone(SHA_TO_CORPUS_ID_QUERY.prepare(s2_id))
         return row[0] if row else None
 
     def _corpus_id_to_sha(self, corpus_id: int) -> str | None:
-        row = self._fetchone(CORPUS_ID_TO_SHA_QUERY, [corpus_id])
+        row = self._store.fetchone(CORPUS_ID_TO_SHA_QUERY.prepare(corpus_id))
         return row[0] if row else None
 
     def _batch_corpus_id_to_sha(self, corpus_ids: list[int], chunk_size: int = 500) -> dict[int, str]:
@@ -127,7 +61,7 @@ class LocalCorpus:
         try:
             for index in range(0, len(corpus_ids), chunk_size):
                 chunk = corpus_ids[index : index + chunk_size]
-                rows = self._fetchall(BATCH_CORPUS_ID_TO_SHA_QUERY, chunk)
+                rows = self._store.fetchall(BATCH_CORPUS_ID_TO_SHA_QUERY.prepare(*chunk))
                 for corpus_id, sha in rows:
                     result[corpus_id] = sha
         except Exception as exc:
@@ -148,7 +82,7 @@ class LocalCorpus:
 
     def _sync_get_paper_by_corpus_id(self, corpus_id: int) -> PaperRecord | None:
         try:
-            row = self._fetchone(PAPER_BY_CORPUS_ID_QUERY, [corpus_id])
+            row = self._store.fetchone(PAPER_BY_CORPUS_ID_QUERY.prepare(corpus_id))
             if row is None:
                 return None
 
@@ -157,9 +91,9 @@ class LocalCorpus:
                 corpus_id=corpus_id,
                 s2_id=self._corpus_id_to_sha(corpus_id),
             )
-            abstract_row = self._fetchone(ABSTRACT_BY_CORPUS_ID_QUERY, [corpus_id])
-            tldr_row = self._fetchone(TLDR_BY_CORPUS_ID_QUERY, [corpus_id])
-            author_rows = self._fetchall(AUTHORS_BY_CORPUS_ID_QUERY, [corpus_id])
+            abstract_row = self._store.fetchone(ABSTRACT_BY_CORPUS_ID_QUERY.prepare(corpus_id))
+            tldr_row = self._store.fetchone(TLDR_BY_CORPUS_ID_QUERY.prepare(corpus_id))
+            author_rows = self._store.fetchall(AUTHORS_BY_CORPUS_ID_QUERY.prepare(corpus_id))
             return CorpusRowMapper.enrich_paper(
                 paper,
                 abstract_row=abstract_row,
@@ -187,7 +121,9 @@ class LocalCorpus:
         if corpus_id is None:
             return None
         try:
-            rows = self._fetchall(REFERENCES_BY_CITING_QUERY, [corpus_id], limit=limit)
+            rows = self._store.fetchall(
+                REFERENCES_BY_CITING_QUERY.prepare(corpus_id, limit=limit)
+            )
             cited_ids = [row[0] for row in rows if row[0] is not None]
             sha_map = self._batch_corpus_id_to_sha(cited_ids)
             return CorpusRowMapper.reference_edges(
@@ -217,7 +153,9 @@ class LocalCorpus:
         if corpus_id is None:
             return None
         try:
-            rows = self._fetchall(CITATIONS_BY_CITED_QUERY, [corpus_id], limit=limit)
+            rows = self._store.fetchall(
+                CITATIONS_BY_CITED_QUERY.prepare(corpus_id, limit=limit)
+            )
             citing_ids = [row[0] for row in rows if row[0] is not None]
             sha_map = self._batch_corpus_id_to_sha(citing_ids)
             return CorpusRowMapper.citation_edges(
@@ -235,7 +173,9 @@ class LocalCorpus:
 
     def _sync_resolve_id(self, id_type: str, identifier: str) -> str | None:
         try:
-            row = self._fetchone(RESOLVE_EXTERNAL_ID_QUERY, [id_type, identifier])
+            row = self._store.fetchone(
+                RESOLVE_EXTERNAL_ID_QUERY.prepare(id_type, identifier)
+            )
             return row[0] if row else None
         except Exception as exc:
             logger.warning("LocalCorpus.resolve_id(%s, %s): %s", id_type, identifier, exc)
@@ -252,7 +192,7 @@ class LocalCorpus:
         if corpus_id is None:
             return None
         try:
-            rows = self._fetchall(REFERENCE_IDS_QUERY, [corpus_id])
+            rows = self._store.fetchall(REFERENCE_IDS_QUERY.prepare(corpus_id))
             return {row[0] for row in rows}
         except Exception as exc:
             logger.warning("LocalCorpus.get_reference_ids(%s): %s", s2_id, exc)

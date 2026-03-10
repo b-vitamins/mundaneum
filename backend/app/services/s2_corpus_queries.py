@@ -6,6 +6,40 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class BoundDuckDBQuery:
+    """A query spec with concrete parameters and fallback behavior attached."""
+
+    spec: "DuckDBQuerySpec"
+    params: tuple[object, ...]
+    limit: int | None = None
+
+    def execute(self, conn: Any):
+        try:
+            return conn.execute(
+                self.spec.render(value_count=len(self.params), limit=self.limit),
+                self.spec.bind(self.params, limit=self.limit),
+            )
+        except Exception:
+            if self.spec.fallback_sql is None:
+                raise
+            return conn.execute(
+                self.spec.render(
+                    use_fallback=True,
+                    value_count=len(self.params),
+                    limit=self.limit,
+                ),
+                self.spec.bind(self.params, limit=self.limit),
+            )
+
+    def fetchone(self, conn: Any):
+        return self.execute(conn).fetchone()
+
+    def fetchall(self, conn: Any):
+        return self.execute(conn).fetchall()
 
 
 @dataclass(frozen=True)
@@ -39,6 +73,9 @@ class DuckDBQuerySpec:
         if self.prioritized_limit and limit is not None:
             bound.append(int(limit))
         return bound
+
+    def prepare(self, *params: object, limit: int | None = None) -> BoundDuckDBQuery:
+        return BoundDuckDBQuery(self, tuple(params), limit=limit)
 
 
 SHA_TO_CORPUS_ID_QUERY = DuckDBQuerySpec(
@@ -116,3 +153,8 @@ REFERENCE_IDS_QUERY = DuckDBQuerySpec(
     WHERE c.citingcorpusid = ?
     """
 )
+
+
+def primary_sha_query(corpus_id: int) -> BoundDuckDBQuery:
+    """Compatibility helper for querying the primary SHA for a corpus ID."""
+    return CORPUS_ID_TO_SHA_QUERY.prepare(corpus_id)
