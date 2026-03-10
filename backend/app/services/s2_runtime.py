@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import settings
-from app.services.s2_protocol import S2DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +42,7 @@ class S2Runtime:
     """Concrete S2 runtime dependencies for the process."""
 
     transport: "S2Transport"
+    registry: "S2SourceRegistry"
     local_source: "LocalCorpus | None"
     data_source: "ChainedSource"
     orchestrator: "SyncOrchestrator"
@@ -53,8 +53,9 @@ class S2Runtime:
 
 def build_s2_runtime() -> S2Runtime:
     """Build a fully wired S2 runtime with shared transport/source state."""
-    from app.services.s2_corpus import ChainedSource, LiveAPI, LocalCorpus
+    from app.services.s2_source_registry import S2SourceRegistry
     from app.services.s2_resolvers import default_resolvers
+    from app.services.s2_sources import LiveAPI, LocalCorpus
     from app.services.s2_sync import create_sync_orchestrator
     from app.services.s2_transport import S2Transport
 
@@ -63,14 +64,14 @@ def build_s2_runtime() -> S2Runtime:
         rate_limit=settings.s2_rate_limit,
     )
 
+    registry = S2SourceRegistry()
     local_source: LocalCorpus | None = None
-    sources: list[S2DataSource] = []
     corpus_path = Path(settings.s2_corpus_path)
 
     if corpus_path.exists():
         try:
             local_source = LocalCorpus(corpus_path)
-            sources.append(local_source)
+            registry.register("local", local_source)
             logger.info("S2 runtime: LocalCorpus loaded (%s)", corpus_path)
         except Exception as exc:
             logger.warning("S2 runtime: LocalCorpus failed to load: %s", exc)
@@ -78,8 +79,8 @@ def build_s2_runtime() -> S2Runtime:
         logger.info("S2 runtime: DuckDB not found at %s, using API only", corpus_path)
 
     live_api = LiveAPI(transport)
-    sources.append(live_api)
-    data_source = ChainedSource(sources)
+    registry.register("live", live_api)
+    data_source = registry.chain()
 
     orchestrator = create_sync_orchestrator(
         source=data_source,
@@ -90,10 +91,12 @@ def build_s2_runtime() -> S2Runtime:
 
     return S2Runtime(
         transport=transport,
+        registry=registry,
         local_source=local_source,
         data_source=data_source,
         orchestrator=orchestrator,
     )
+
 
 def get_s2_runtime() -> S2Runtime:
     """Return the process-owned S2 runtime."""
