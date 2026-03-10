@@ -29,6 +29,7 @@ from app.routers import (
     venues,
 )
 from app.runtime import build_app_runtime
+from app.services.service_container import build_service_container, set_service_container
 
 logger = get_logger(__name__)
 
@@ -66,7 +67,9 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
-app.state.runtime = build_app_runtime()
+app.state.services = build_service_container()
+set_service_container(app.state.services)
+app.state.runtime = build_app_runtime(app.state.services)
 
 # CORS middleware
 app.add_middleware(

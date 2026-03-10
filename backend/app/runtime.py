@@ -9,9 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import settings
-from app.database import engine
 from app.logging import get_logger
-from app.services.s2_runtime import get_s2_runtime
+from app.services.service_container import ServiceContainer
 from app.services.system_health import SystemHealthService
 from app.services.worker import worker as ingestion_worker
 
@@ -37,9 +36,11 @@ class BackgroundSupervisor:
         *,
         bibliography_path: Path,
         backfill_policy: BackfillPolicy,
+        services: ServiceContainer,
     ):
         self._bibliography_path = bibliography_path
         self._backfill_policy = backfill_policy
+        self._services = services
         self._backfill_task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -65,12 +66,12 @@ class BackgroundSupervisor:
             except asyncio.CancelledError:
                 pass
 
-        await get_s2_runtime().close()
+        await self._services.s2_runtime.close()
         await ingestion_worker.stop()
 
     async def _run_s2_backfill(self) -> None:
         await asyncio.sleep(self._backfill_policy.initial_delay_seconds)
-        orchestrator = get_s2_runtime().orchestrator
+        orchestrator = self._services.s2_runtime.orchestrator
         logger.info("S2 backfill loop started")
 
         while True:
@@ -95,6 +96,7 @@ class BackgroundSupervisor:
 class AppRuntime:
     """Process-owned runtime services."""
 
+    services: ServiceContainer
     health: SystemHealthService
     supervisor: BackgroundSupervisor
 
@@ -103,10 +105,10 @@ class AppRuntime:
 
     async def stop(self) -> None:
         await self.supervisor.stop()
-        await engine.dispose()
+        await self.services.database.engine.dispose()
 
 
-def build_app_runtime() -> AppRuntime:
+def build_app_runtime(services: ServiceContainer) -> AppRuntime:
     bibliography_path = Path(settings.bib_directory)
     backfill_policy = BackfillPolicy(
         initial_delay_seconds=settings.s2_backfill_initial_delay_seconds,
@@ -116,9 +118,11 @@ def build_app_runtime() -> AppRuntime:
         batch_size=settings.s2_backfill_batch_size,
     )
     return AppRuntime(
+        services=services,
         health=SystemHealthService(bibliography_path=bibliography_path),
         supervisor=BackgroundSupervisor(
             bibliography_path=bibliography_path,
             backfill_policy=backfill_policy,
+            services=services,
         ),
     )

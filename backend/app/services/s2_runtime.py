@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 from app.config import settings
@@ -96,8 +95,8 @@ def build_s2_runtime() -> S2Runtime:
         orchestrator=orchestrator,
     )
 
-
-@lru_cache(maxsize=1)
 def get_s2_runtime() -> S2Runtime:
-    """Return the process-wide S2 runtime."""
-    return build_s2_runtime()
+    """Return the process-owned S2 runtime."""
+    from app.services.service_container import get_service_container
+
+    return get_service_container().s2_runtime

@@ -4,14 +4,12 @@ MinIO storage service for Mundaneum.
 Handles file storage (PDFs, attachments) in MinIO/S3-compatible storage.
 """
 
-from functools import lru_cache
 from io import BytesIO
 from typing import BinaryIO
 
 from minio import Minio
 from minio.error import S3Error
 
-from app.config import settings
 from app.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,20 +29,11 @@ class StorageUnavailableError(StorageError):
     pass
 
 
-@lru_cache(maxsize=1)
 def get_client() -> Minio:
-    """Get cached MinIO client."""
-    # Parse URL to extract host and determine if secure
-    url = settings.minio_url
-    secure = url.startswith("https://")
-    host = url.replace("https://", "").replace("http://", "")
+    """Get the process-owned MinIO client."""
+    from app.services.service_container import get_service_container
 
-    return Minio(
-        host,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
-        secure=secure,
-    )
+    return get_service_container().storage.client
 
 
 def ensure_bucket() -> bool:

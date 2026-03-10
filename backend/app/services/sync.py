@@ -4,13 +4,12 @@ Meilisearch sync service for Mundaneum.
 Handles syncing entries to Meilisearch for full-text search.
 """
 
-from functools import lru_cache, wraps
+from functools import wraps
 from typing import TYPE_CHECKING
 
 import meilisearch
 from meilisearch.errors import MeilisearchApiError, MeilisearchCommunicationError
 
-from app.config import settings
 from app.logging import get_logger
 
 if TYPE_CHECKING:
@@ -52,14 +51,11 @@ class MeilisearchUnavailableError(Exception):
     pass
 
 
-@lru_cache(maxsize=1)
 def get_client() -> meilisearch.Client:
-    """Get cached Meilisearch client."""
-    return meilisearch.Client(
-        settings.meili_url,
-        settings.meili_api_key,
-        timeout=settings.meili_timeout,
-    )
+    """Get the process-owned Meilisearch client."""
+    from app.services.service_container import get_service_container
+
+    return get_service_container().search.client
 
 
 def _handle_meili_error(func):
