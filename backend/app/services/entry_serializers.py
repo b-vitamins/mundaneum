@@ -9,8 +9,7 @@ from app.schemas.entries import EntryDetailResponse, EntryResponse
 
 def entry_abstract(entry: Entry) -> str | None:
     """Resolve the best available abstract for an entry."""
-    optional = entry.optional_fields or {}
-    return optional.get("abstract")
+    return entry.bib_metadata.abstract
 
 
 def serialize_entry(entry: Entry) -> EntryResponse:
@@ -31,12 +30,11 @@ def serialize_entry(entry: Entry) -> EntryResponse:
 
 def serialize_entry_detail(entry: Entry) -> EntryDetailResponse:
     """Serialize an entry row for detail responses."""
-    required = entry.required_fields or {}
-    optional = entry.optional_fields or {}
+    metadata = entry.bib_metadata
     return EntryDetailResponse(
         **serialize_entry(entry).model_dump(),
-        required_fields=required,
-        optional_fields=optional,
+        required_fields=metadata.dump_required(),
+        optional_fields=metadata.dump_optional(),
         notes=entry.notes,
         source_file=entry.source_file,
     )

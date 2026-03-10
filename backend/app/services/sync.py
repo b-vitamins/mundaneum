@@ -101,19 +101,7 @@ def entry_to_document(entry: "Entry") -> dict:
     """Convert database entry to Meilisearch document."""
     # Get authors as list of names
     author_names = [ea.author.name for ea in entry.authors] if entry.authors else []
-
-    # Extract common fields from JSONB (handle None values)
-    optional = entry.optional_fields or {}
-    required = entry.required_fields or {}
-
-    abstract = optional.get("abstract", "")
-    venue = (
-        required.get("journal")
-        or required.get("booktitle")
-        or optional.get("journal")
-        or optional.get("booktitle")
-        or ""
-    )
+    metadata = entry.bib_metadata
 
     return {
         "id": str(entry.id),
@@ -122,8 +110,8 @@ def entry_to_document(entry: "Entry") -> dict:
         "title": entry.title or "",
         "year": entry.year,
         "authors": author_names,
-        "abstract": abstract,
-        "venue": venue,
+        "abstract": metadata.abstract or "",
+        "venue": metadata.venue_name or "",
         "has_pdf": bool(entry.file_path),
         "read": entry.read or False,
         "created_at": entry.created_at.timestamp() if entry.created_at else 0,

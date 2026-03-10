@@ -26,18 +26,16 @@ async def resolve_graph_center_s2_id(
     if entry is None:
         return None
 
-    for fields in [entry.required_fields or {}, entry.optional_fields or {}]:
-        doi = fields.get("doi") or fields.get("DOI")
-        if doi:
-            s2_id = await local_source.resolve_id("DOI", doi.strip())
-            if s2_id:
-                return s2_id
+    doi = entry.bib_metadata.get("doi")
+    if doi:
+        s2_id = await local_source.resolve_id("DOI", doi)
+        if s2_id:
+            return s2_id
 
-    for fields in [entry.required_fields or {}, entry.optional_fields or {}]:
-        arxiv = fields.get("arxiv") or fields.get("eprint")
-        if arxiv:
-            s2_id = await local_source.resolve_id("ArXiv", arxiv.strip())
-            if s2_id:
-                return s2_id
+    arxiv = entry.bib_metadata.get("arxiv", "eprint")
+    if arxiv:
+        s2_id = await local_source.resolve_id("ArXiv", arxiv)
+        if s2_id:
+            return s2_id
 
     return None

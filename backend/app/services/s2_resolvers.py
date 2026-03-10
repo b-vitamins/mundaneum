@@ -80,14 +80,7 @@ class TitleResolver:
 
 def extract_identifier(entry: Entry, *field_names: str) -> str | None:
     """Extract an identifier from an entry's BibTeX fields."""
-    for fields in [entry.required_fields or {}, entry.optional_fields or {}]:
-        for name in field_names:
-            value = (
-                fields.get(name) or fields.get(name.upper()) or fields.get(name.lower())
-            )
-            if value and isinstance(value, str) and value.strip():
-                return value.strip()
-    return None
+    return entry.bib_metadata.get(*field_names)
 
 
 def title_similarity(left: str, right: str) -> float:
