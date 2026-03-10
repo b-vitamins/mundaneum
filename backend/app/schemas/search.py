@@ -27,10 +27,17 @@ class SearchSource(str, Enum):
     NONE = "none"
 
 
+class SearchWarningCode(str, Enum):
+    """Supported structured search warnings."""
+
+    MEILISEARCH_UNAVAILABLE = "meilisearch_unavailable"
+    SEARCH_UNAVAILABLE = "search_unavailable"
+
+
 class SearchWarning(BaseModel):
     """Structured search degradation metadata."""
 
-    code: str
+    code: SearchWarningCode
     message: str
 
 

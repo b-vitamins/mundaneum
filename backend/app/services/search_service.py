@@ -22,6 +22,7 @@ from app.schemas.search import (
     SearchSortOrder,
     SearchSource,
     SearchWarning,
+    SearchWarningCode,
 )
 from app.services.entry_queries import ENTRY_SORT_COLUMNS, entry_load_options
 from app.services.entry_serializers import serialize_search_hit
@@ -30,11 +31,11 @@ from app.services.sync import INDEX_NAME, get_client
 logger = get_logger(__name__)
 
 MEILI_WARNING: Final[SearchWarning] = SearchWarning(
-    code="meilisearch_unavailable",
+    code=SearchWarningCode.MEILISEARCH_UNAVAILABLE,
     message="Full-text search is unavailable. Showing degraded database results.",
 )
 UNAVAILABLE_WARNING: Final[SearchWarning] = SearchWarning(
-    code="search_unavailable",
+    code=SearchWarningCode.SEARCH_UNAVAILABLE,
     message="Search is temporarily unavailable.",
 )
 SEARCH_SORT_COLUMNS: Final = {

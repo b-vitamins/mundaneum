@@ -3,43 +3,26 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   api,
-  type SearchFilters,
   type SearchHit,
   type SearchStatus,
   type SearchWarning,
 } from '@/api/client'
 import AppShell from '@/components/AppShell.vue'
+import {
+  buildSearchRequest,
+  buildSearchRouteQuery,
+  defaultSearchFilters,
+  lastSearchWarning,
+  primarySearchWarning,
+  readSearchQuery,
+  type SearchFilterForm,
+} from '@/features/search/model'
 
 const route = useRoute()
 const router = useRouter()
 
-type TernaryFilter = '' | 'true' | 'false'
-
-interface SearchFilterForm {
-  entry_type: string
-  year_from: number | null
-  year_to: number | null
-  has_pdf: TernaryFilter
-  read: TernaryFilter
-}
-
-function defaultFilters(): SearchFilterForm {
-  return {
-    entry_type: '',
-    year_from: null,
-    year_to: null,
-    has_pdf: '',
-    read: '',
-  }
-}
-
-function parseTernaryFilter(value: TernaryFilter): boolean | undefined {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  return undefined
-}
-
-const query = ref(route.query.q as string || '')
+const initialSearch = readSearchQuery(route.query)
+const query = ref(initialSearch.query)
 const results = ref<SearchHit[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -48,7 +31,7 @@ const status = ref<SearchStatus>('ok')
 const warnings = ref<SearchWarning[]>([])
 
 const showFilters = ref(false)
-const filters = ref<SearchFilterForm>(defaultFilters())
+const filters = ref<SearchFilterForm>(initialSearch.filters)
 const entryTypes = ['article', 'book', 'inproceedings', 'phdthesis', 'techreport', 'misc']
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -65,18 +48,7 @@ async function search() {
   loading.value = true
   error.value = ''
   try {
-    const activeFilters: SearchFilters = {}
-    if (filters.value.entry_type) activeFilters.entry_type = filters.value.entry_type
-    if (filters.value.year_from !== null) activeFilters.year_from = filters.value.year_from
-    if (filters.value.year_to !== null) activeFilters.year_to = filters.value.year_to
-
-    const hasPdf = parseTernaryFilter(filters.value.has_pdf)
-    if (hasPdf !== undefined) activeFilters.has_pdf = hasPdf
-
-    const read = parseTernaryFilter(filters.value.read)
-    if (read !== undefined) activeFilters.read = read
-
-    const data = await api.search(query.value, activeFilters)
+    const data = await api.search(buildSearchRequest(query.value, filters.value))
     status.value = data.status
     warnings.value = data.warnings
     results.value = data.hits
@@ -94,13 +66,15 @@ async function search() {
 function debouncedSearch() {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
-    router.replace({ query: { ...route.query, q: query.value } })
+    router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
     search()
   }, 300)
 }
 
 watch(() => route.query, (newQuery) => {
-  query.value = newQuery.q as string || ''
+  const nextSearch = readSearchQuery(newQuery)
+  query.value = nextSearch.query
+  filters.value = nextSearch.filters
   search()
 }, { immediate: true })
 
@@ -109,20 +83,23 @@ watch(query, () => { debouncedSearch() })
 onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
 
 function handleSearch() {
-  router.replace({ query: { ...route.query, q: query.value } })
+  router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
+  search()
+}
+
+function applyFilters() {
+  router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
   search()
 }
 
 function clearFilters() {
-  filters.value = defaultFilters()
+  filters.value = defaultSearchFilters()
+  router.replace({ query: buildSearchRouteQuery(query.value, filters.value) })
   search()
 }
 
-const partialWarning = computed(() => warnings.value[0]?.message ?? '')
-const unavailableDetail = computed(() => {
-  if (warnings.value.length === 0) return ''
-  return warnings.value[warnings.value.length - 1]?.message ?? ''
-})
+const partialWarning = computed(() => primarySearchWarning(warnings.value))
+const unavailableDetail = computed(() => lastSearchWarning(warnings.value))
 </script>
 
 <template>
@@ -186,7 +163,7 @@ const unavailableDetail = computed(() => {
         </div>
 
         <div class="filter-actions">
-          <button type="button" class="btn btn-primary" @click="search">Apply</button>
+          <button type="button" class="btn btn-primary" @click="applyFilters">Apply</button>
           <button type="button" class="btn btn-ghost" @click="clearFilters">Clear</button>
         </div>
       </aside>

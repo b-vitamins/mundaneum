@@ -5,8 +5,6 @@ import type {
     GraphData,
     S2Meta,
     S2Paper,
-    SearchFilters,
-    SearchResponse,
     Stats,
 } from '@/api/types'
 
@@ -32,20 +30,6 @@ export const libraryApi = {
             return handleError(error)
         }
     },
-
-    async search(query: string, filters?: SearchFilters, limit = 20, offset = 0, sort?: string): Promise<SearchResponse> {
-        try {
-            const { data } = await withRetry(() =>
-                client.get('/search', {
-                    params: { q: query, ...filters, limit, offset, sort }
-                })
-            )
-            return data
-        } catch (error) {
-            return handleError(error)
-        }
-    },
-
     async getEntry(id: string): Promise<EntryDetail> {
         try {
             const { data } = await withRetry(() => client.get(`/entries/${id}`))

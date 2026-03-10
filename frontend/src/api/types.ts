@@ -32,10 +32,18 @@ export interface SearchHit {
 
 export type SearchStatus = 'ok' | 'partial' | 'unavailable'
 export type SearchSource = 'meilisearch' | 'database' | 'none'
+export type SearchWarningCode = 'meilisearch_unavailable' | 'search_unavailable'
+export type SearchSortField = 'created_at' | 'year' | 'title'
+export type SearchSortOrder = 'asc' | 'desc'
 
 export interface SearchWarning {
-    code: string
+    code: SearchWarningCode
     message: string
+}
+
+export interface SearchSort {
+    field: SearchSortField
+    order: SearchSortOrder
 }
 
 export interface SearchResponse {
@@ -77,6 +85,14 @@ export interface SearchFilters {
     year_to?: number
     has_pdf?: boolean
     read?: boolean
+}
+
+export interface SearchQueryInput {
+    query: string
+    filters?: SearchFilters
+    limit?: number
+    offset?: number
+    sort?: SearchSort
 }
 
 export interface S2Paper {
