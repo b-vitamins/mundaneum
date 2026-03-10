@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type SearchHit, type SearchFilters } from '@/api/client'
+import {
+  api,
+  type SearchFilters,
+  type SearchHit,
+  type SearchStatus,
+  type SearchWarning,
+} from '@/api/client'
 import AppShell from '@/components/AppShell.vue'
 
 const route = useRoute()
@@ -12,6 +18,8 @@ const results = ref<SearchHit[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
+const status = ref<SearchStatus>('ok')
+const warnings = ref<SearchWarning[]>([])
 
 const showFilters = ref(false)
 const filters = ref<SearchFilters>({})
@@ -23,6 +31,9 @@ async function search() {
   if (!query.value.trim()) {
     results.value = []
     total.value = 0
+    status.value = 'ok'
+    warnings.value = []
+    error.value = ''
     return
   }
   loading.value = true
@@ -35,11 +46,15 @@ async function search() {
     if (filters.value.read) activeFilters.read = filters.value.read
 
     const data = await api.search(query.value, activeFilters)
+    status.value = data.status
+    warnings.value = data.warnings
     results.value = data.hits
     total.value = data.total
   } catch (e) {
     console.error('Search failed:', e)
     error.value = 'Search failed'
+    status.value = 'unavailable'
+    warnings.value = []
   } finally {
     loading.value = false
   }
@@ -71,6 +86,12 @@ function clearFilters() {
   filters.value = {}
   search()
 }
+
+const partialWarning = computed(() => warnings.value[0]?.message ?? '')
+const unavailableDetail = computed(() => {
+  if (warnings.value.length === 0) return ''
+  return warnings.value[warnings.value.length - 1]?.message ?? ''
+})
 </script>
 
 <template>
@@ -134,11 +155,19 @@ function clearFilters() {
           <span class="results-count">{{ total.toLocaleString() }} results</span>
         </div>
 
+        <div v-if="status === 'partial' && !loading && !error" class="status warning">
+          <p>{{ partialWarning || 'Full-text search is unavailable. Showing degraded database results.' }}</p>
+        </div>
+
         <div v-if="loading" class="status">
           <span class="spinner"></span>
           Searching...
         </div>
         <p v-else-if="error" class="status error">{{ error }}</p>
+        <div v-else-if="status === 'unavailable'" class="status error">
+          <p>Search is temporarily unavailable.</p>
+          <p v-if="unavailableDetail" class="status-detail">{{ unavailableDetail }}</p>
+        </div>
         <p v-else-if="results.length === 0 && query" class="status">No results found</p>
         <p v-else-if="!query" class="status empty-state">Enter a search term to find papers</p>
 
@@ -242,6 +271,19 @@ function clearFilters() {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+.status.warning {
+  color: var(--warning-strong, #8a5a00);
+  background: var(--warning-bg, #fff5d6);
+  border: 1px solid var(--warning-border, #f0cf72);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.status-detail {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
 }
 
 .filter-actions {

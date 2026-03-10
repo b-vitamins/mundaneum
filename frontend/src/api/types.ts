@@ -30,10 +30,21 @@ export interface SearchHit {
     read: boolean
 }
 
+export type SearchStatus = 'ok' | 'partial' | 'unavailable'
+export type SearchSource = 'meilisearch' | 'database' | 'none'
+
+export interface SearchWarning {
+    code: string
+    message: string
+}
+
 export interface SearchResponse {
+    status: SearchStatus
+    source: SearchSource
     hits: SearchHit[]
     total: number
     processing_time_ms: number
+    warnings: SearchWarning[]
 }
 
 export interface EntryDetail extends EntryListItem {

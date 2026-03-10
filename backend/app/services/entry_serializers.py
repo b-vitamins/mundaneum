@@ -5,6 +5,7 @@ Entry serialization helpers.
 from app.models import Entry
 from app.routers.entity_common import entry_authors, entry_venue
 from app.schemas.entries import EntryDetailResponse, EntryResponse
+from app.schemas.search import SearchHitResponse
 
 
 def entry_abstract(entry: Entry) -> str | None:
@@ -37,4 +38,20 @@ def serialize_entry_detail(entry: Entry) -> EntryDetailResponse:
         optional_fields=metadata.dump_optional(),
         notes=entry.notes,
         source_file=entry.source_file,
+    )
+
+
+def serialize_search_hit(entry: Entry) -> SearchHitResponse:
+    """Serialize an entry row for search results."""
+    return SearchHitResponse(
+        id=str(entry.id),
+        citation_key=entry.citation_key,
+        entry_type=entry.entry_type.value,
+        title=entry.title,
+        year=entry.year,
+        authors=entry_authors(entry),
+        venue=entry_venue(entry),
+        abstract=entry_abstract(entry),
+        has_pdf=bool(entry.file_path),
+        read=entry.read or False,
     )
