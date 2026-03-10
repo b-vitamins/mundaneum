@@ -11,6 +11,7 @@ from pathlib import Path
 from app.config import settings
 from app.database import check_db_health
 from app.logging import get_logger
+from app.services.domain_events import DomainEventBus
 from app.services.ingest import ensure_search_index_ready, ingest_bib_file
 from app.services.service_container import ServiceContainer
 from app.services.system_health import HealthContributor, SystemHealthService
@@ -179,7 +180,10 @@ class AppRuntime:
         return self.supervisor.get_job(name)
 
 
-def build_app_runtime(services: ServiceContainer) -> AppRuntime:
+def build_app_runtime(
+    services: ServiceContainer,
+    events: DomainEventBus,
+) -> AppRuntime:
     bibliography_path = Path(settings.bib_directory)
     backfill_policy = BackfillPolicy(
         initial_delay_seconds=settings.s2_backfill_initial_delay_seconds,
@@ -200,6 +204,7 @@ def build_app_runtime(services: ServiceContainer) -> AppRuntime:
                     session,
                     path,
                     search_index=services.search.indexer,
+                    event_bus=events,
                 ),
             ),
         ),

@@ -35,6 +35,7 @@ async def import_directory(directory: str) -> int:
             session,
             str(target),
             search_index=context.services.search.indexer,
+            event_bus=context.events,
         )
 
     await context.services.database.engine.dispose()

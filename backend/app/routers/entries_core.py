@@ -68,11 +68,18 @@ async def get_entry_detail(
 @router.patch("/{entry_id}/read", response_model=ReadResponse)
 async def toggle_read(
     entry_id: UUID,
+    http_request: Request,
     request: ReadRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ReadResponse:
     """Toggle read status of an entry."""
-    entry = await update_entry_read(db, entry_id, read=request.read)
+    event_bus = http_request.app.state.context.events
+    entry = await update_entry_read(
+        db,
+        entry_id,
+        read=request.read,
+        event_bus=event_bus,
+    )
     logger.info(
         "Entry %s marked as %s",
         entry.citation_key,
@@ -84,11 +91,18 @@ async def toggle_read(
 @router.patch("/{entry_id}/notes", response_model=NotesResponse)
 async def update_notes(
     entry_id: UUID,
+    http_request: Request,
     request: NotesRequest,
     db: AsyncSession = Depends(get_db),
 ) -> NotesResponse:
     """Update notes for an entry."""
-    entry = await update_entry_notes(db, entry_id, notes=request.notes)
+    event_bus = http_request.app.state.context.events
+    entry = await update_entry_notes(
+        db,
+        entry_id,
+        notes=request.notes,
+        event_bus=event_bus,
+    )
     logger.debug("Updated notes for %s", entry.citation_key)
     return NotesResponse(id=str(entry_id), notes=request.notes)
 

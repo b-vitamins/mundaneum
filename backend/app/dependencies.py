@@ -8,6 +8,7 @@ from fastapi import Depends, Request
 
 from app.app_context import AppContext, get_app_context
 from app.runtime import AppRuntime
+from app.services.domain_events import DomainEventBus
 from app.services.storage import StorageService
 from app.services.sync import SearchIndexService
 
@@ -22,6 +23,10 @@ def get_search_index(context: AppContext = Depends(get_app_context)) -> SearchIn
 
 def get_storage(context: AppContext = Depends(get_app_context)) -> StorageService:
     return context.services.storage.service
+
+
+def get_events(context: AppContext = Depends(get_app_context)) -> DomainEventBus:
+    return context.events
 
 
 def get_s2_runtime(request: Request):

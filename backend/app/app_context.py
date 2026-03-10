@@ -10,6 +10,7 @@ from fastapi import Request
 
 from app.runtime import AppRuntime, build_app_runtime
 from app.services.service_container import ServiceContainer, build_service_container
+from app.services.domain_events import DomainEventBus, build_domain_event_bus
 
 
 @dataclass(slots=True)
@@ -18,13 +19,18 @@ class AppContext:
 
     services: ServiceContainer
     runtime: AppRuntime
+    events: DomainEventBus
 
 
 def build_app_context() -> AppContext:
     """Build all process-owned services and runtime wiring."""
     services = build_service_container()
-    runtime = build_app_runtime(services)
-    return AppContext(services=services, runtime=runtime)
+    events = build_domain_event_bus(
+        session_factory=services.database.session_factory,
+        search_index=services.search.indexer,
+    )
+    runtime = build_app_runtime(services, events)
+    return AppContext(services=services, runtime=runtime, events=events)
 
 
 def get_app_context(request: Request) -> AppContext:

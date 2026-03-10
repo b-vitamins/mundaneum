@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging import get_logger
 from app.models import Entry
+from app.services.domain_events import DomainEventBus, EntriesChanged
 from app.services.ingest_entities import (
     apply_entry_fields,
     build_ingest_context,
@@ -88,9 +89,19 @@ async def ingest_entries_batch(
 async def sync_imported_entries(
     entries: list[Entry],
     search_index: SearchIndexService | None = None,
+    event_bus: DomainEventBus | None = None,
 ) -> None:
-    """Sync imported entries to Meilisearch using already hydrated ORM objects."""
-    if not entries or search_index is None:
+    """Publish imported entry changes for downstream projections."""
+    if not entries:
+        return
+
+    if event_bus is not None:
+        await event_bus.publish(
+            EntriesChanged(entry_ids=tuple(str(entry.id) for entry in entries))
+        )
+        return
+
+    if search_index is None:
         return
 
     try:
@@ -121,6 +132,7 @@ async def ingest_parsed_entries(
     commit: bool = True,
     sync_search: bool = True,
     search_index: SearchIndexService | None = None,
+    event_bus: DomainEventBus | None = None,
 ) -> IngestResult:
     """Ingest parsed entries through one shared batching and sync pipeline."""
     result = IngestResult(total_parsed=len(entries_data))
@@ -143,7 +155,11 @@ async def ingest_parsed_entries(
         result.imported_count += len(batch_imported)
 
     if sync_search:
-        await sync_imported_entries(result.imported_entries, search_index)
+        await sync_imported_entries(
+            result.imported_entries,
+            search_index,
+            event_bus,
+        )
 
     return result
 
@@ -155,6 +171,7 @@ async def ingest_bib_file(
     batch_size: int = 100,
     sync_search: bool = True,
     search_index: SearchIndexService | None = None,
+    event_bus: DomainEventBus | None = None,
 ) -> IngestResult:
     """Parse and ingest one bibliography file using the shared pipeline."""
     entries_data = parse_bib_file(bib_path)
@@ -167,6 +184,7 @@ async def ingest_bib_file(
         commit=True,
         sync_search=sync_search,
         search_index=search_index,
+        event_bus=event_bus,
     )
 
 
@@ -181,6 +199,7 @@ async def ingest_directory(
     directory: str | Path,
     *,
     search_index: SearchIndexService | None = None,
+    event_bus: DomainEventBus | None = None,
 ) -> dict:
     """Import all `.bib` files from a directory and return aggregate stats."""
     directory = Path(directory)
@@ -207,6 +226,7 @@ async def ingest_directory(
             session,
             bib_path,
             search_index=search_index,
+            event_bus=event_bus,
         )
         result.extend(file_result)
         logger.info(
