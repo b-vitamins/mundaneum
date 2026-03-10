@@ -21,16 +21,13 @@ function routeValue(): string {
 
 const { data, loading, error } = useRouteResource({
   key: routeValue,
-  fetcher: async (value) => ({
-    detail: await model.value.loadDetail(value),
-    entries: await model.value.loadEntries(value),
-  }),
+  fetcher: value => model.value.loadPage(value),
 })
 
-const title = computed(() => data.value ? model.value.title(data.value.detail) : model.value.titleFallback)
-const statsLabel = computed(() => data.value ? model.value.statsLabel(data.value.detail) : '')
-const badge = computed(() => data.value ? model.value.badge?.(data.value.detail) ?? null : null)
-const secondaryLines = computed(() => data.value ? model.value.secondaryLines?.(data.value.detail) ?? [] : [])
+const title = computed(() => data.value ? data.value.title : model.value.titleFallback)
+const statsLabel = computed(() => data.value ? data.value.statsLabel : '')
+const badge = computed(() => data.value?.badge ?? null)
+const secondaryLines = computed(() => data.value?.secondaryLines ?? [])
 </script>
 
 <template>
@@ -65,9 +62,9 @@ const secondaryLines = computed(() => data.value ? model.value.secondaryLines?.(
               <h3 class="entry-title">{{ entry.title }}</h3>
               <p class="entry-meta">
                 <span
-                  v-for="meta in model.entryMeta(entry)"
+                  v-for="meta in entry.meta"
                   :key="`${entry.id}-${meta}`"
-                  :class="meta === entry.entry_type ? 'badge badge-muted' : ''"
+                  :class="meta === entry.badge ? 'badge badge-muted' : ''"
                 >
                   {{ meta }}
                 </span>

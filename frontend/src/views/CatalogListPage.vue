@@ -5,7 +5,7 @@ import AppShell from '@/components/AppShell.vue'
 import {
   catalogListPageModels,
   type CatalogEntityKey,
-  type CatalogListItem,
+  type CatalogListCard,
   type CatalogSortField,
   type CatalogSortOrder,
 } from '@/catalog/entityPageModels'
@@ -26,7 +26,7 @@ function isSortOrder(value: unknown): value is CatalogSortOrder {
   return value === 'asc' || value === 'desc'
 }
 
-const items = ref<CatalogListItem[]>([])
+const items = ref<CatalogListCard[]>([])
 const loading = ref(true)
 const error = ref('')
 const sortBy = ref<CatalogSortField>(
@@ -154,11 +154,11 @@ watch(
           <router-link
             v-for="item in group.items"
             :key="item.id"
-            :to="model.itemHref(item)"
+            :to="item.href"
             class="subarea-item"
           >
-            <span class="subarea-name">{{ model.itemTitle(item) }}</span>
-            <span class="subarea-count badge badge-accent">{{ model.itemCountLabel(item) }}</span>
+            <span class="subarea-name">{{ item.title }}</span>
+            <span class="subarea-count badge badge-accent">{{ item.countLabel }}</span>
           </router-link>
         </div>
       </section>
@@ -167,17 +167,17 @@ watch(
     <div v-else class="entity-grid">
       <router-link
         v-for="item in items"
-        :key="model.itemHref(item)"
-        :to="model.itemHref(item)"
+        :key="item.href"
+        :to="item.href"
         class="entity-card card card-hoverable"
       >
         <div class="entity-card-body">
-          <span class="entity-name">{{ model.itemTitle(item) }}</span>
-          <span v-if="model.itemBadge?.(item)" class="badge badge-muted">
-            {{ model.itemBadge?.(item) }}
+          <span class="entity-name">{{ item.title }}</span>
+          <span v-if="item.badge" class="badge badge-muted">
+            {{ item.badge }}
           </span>
         </div>
-        <span class="entity-count badge badge-muted">{{ model.itemCountLabel(item) }}</span>
+        <span class="entity-count badge badge-muted">{{ item.countLabel }}</span>
       </router-link>
     </div>
   </AppShell>
