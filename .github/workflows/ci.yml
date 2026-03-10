@@ -63,6 +63,12 @@ jobs:
         working-directory: backend
         run: poetry install --no-interaction
 
+      - name: Migrate test database
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://mundaneum:testpass@localhost:5432/mundaneum_test
+        run: poetry run alembic upgrade head
+
       - name: Run tests
         working-directory: backend
         env:
