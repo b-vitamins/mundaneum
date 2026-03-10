@@ -17,245 +17,33 @@ from pylatexenc.latex2text import LatexNodes2Text
 
 from app.logging import get_logger
 from app.models import EntryType
+from app.services.parser_catalogs import (
+    CONTEXT_SUBAREA_NAMES,
+    FULL_SLUG_SUBJECTS,
+    SUBJECT_PREFIXES,
+    SUBAREA_NAMES,
+    VENUE_DATA,
+)
+from app.services.parser_pipeline import (
+    EntryParseState,
+    apply_file_metadata,
+    normalize_authors as pipeline_normalize_authors,
+)
+from app.services.parser_pipeline import (
+    normalize_entry_type,
+    normalize_file_path,
+    normalize_title_and_year,
+    normalize_venue as pipeline_normalize_venue,
+    split_required_optional_fields,
+)
 
 logger = get_logger(__name__)
-
-# Fields that should be extracted from BibTeX and promoted to columns
-PROMOTED_FIELDS = {"title", "year", "file"}
-
-# Required fields per entry type (BibTeX specification)
-REQUIRED_FIELDS: dict[str, set[str]] = {
-    "article": {"author", "title", "journal", "year"},
-    "book": {"title", "publisher", "year"},
-    "booklet": {"title"},
-    "inbook": {"title", "publisher", "year"},
-    "incollection": {"author", "title", "booktitle", "publisher", "year"},
-    "inproceedings": {"author", "title", "booktitle", "year"},
-    "manual": {"title"},
-    "mastersthesis": {"author", "title", "school", "year"},
-    "misc": set(),
-    "phdthesis": {"author", "title", "school", "year"},
-    "proceedings": {"title", "year"},
-    "techreport": {"author", "title", "institution", "year"},
-    "unpublished": {"author", "title", "note"},
-}
-
-# Venue normalization: slug -> (display_name, category, aliases)
-VENUE_DATA: dict[str, tuple[str, str, list[str]]] = {
-    # Conferences
-    "neurips": (
-        "NeurIPS",
-        "CONFERENCE",
-        [
-            "neurips",
-            "nips",
-            "advances in neural information processing systems",
-            "neural information processing systems",
-        ],
-    ),
-    "icml": (
-        "ICML",
-        "CONFERENCE",
-        ["icml", "international conference on machine learning"],
-    ),
-    "iclr": (
-        "ICLR",
-        "CONFERENCE",
-        ["iclr", "international conference on learning representations"],
-    ),
-    "cvpr": (
-        "CVPR",
-        "CONFERENCE",
-        [
-            "cvpr",
-            "ieee/cvf conference on computer vision and pattern recognition",
-            "computer vision and pattern recognition",
-        ],
-    ),
-    "iccv": (
-        "ICCV",
-        "CONFERENCE",
-        ["iccv", "ieee/cvf international conference on computer vision"],
-    ),
-    "eccv": ("ECCV", "CONFERENCE", ["eccv", "european conference on computer vision"]),
-    "aaai": (
-        "AAAI",
-        "CONFERENCE",
-        ["aaai", "aaai conference on artificial intelligence"],
-    ),
-    "ijcai": (
-        "IJCAI",
-        "CONFERENCE",
-        ["ijcai", "international joint conference on artificial intelligence"],
-    ),
-    "acl": (
-        "ACL",
-        "CONFERENCE",
-        ["acl", "annual meeting of the association for computational linguistics"],
-    ),
-    "emnlp": (
-        "EMNLP",
-        "CONFERENCE",
-        ["emnlp", "empirical methods in natural language processing"],
-    ),
-    "naacl": (
-        "NAACL",
-        "CONFERENCE",
-        [
-            "naacl",
-            "north american chapter of the association for computational linguistics",
-        ],
-    ),
-    "aistats": (
-        "AISTATS",
-        "CONFERENCE",
-        ["aistats", "artificial intelligence and statistics"],
-    ),
-    "uai": ("UAI", "CONFERENCE", ["uai", "uncertainty in artificial intelligence"]),
-    "colt": ("COLT", "CONFERENCE", ["colt", "conference on learning theory"]),
-    "kdd": ("KDD", "CONFERENCE", ["kdd", "knowledge discovery and data mining"]),
-    "www": ("WWW", "CONFERENCE", ["www", "the web conference", "world wide web"]),
-    "sigir": (
-        "SIGIR",
-        "CONFERENCE",
-        ["sigir", "research and development in information retrieval"],
-    ),
-    "icra": (
-        "ICRA",
-        "CONFERENCE",
-        ["icra", "ieee international conference on robotics and automation"],
-    ),
-    "iros": (
-        "IROS",
-        "CONFERENCE",
-        ["iros", "ieee/rsj international conference on intelligent robots and systems"],
-    ),
-    "corl": ("CoRL", "CONFERENCE", ["corl", "conference on robot learning"]),
-    # Journals
-    "jmlr": ("JMLR", "JOURNAL", ["jmlr", "journal of machine learning research"]),
-    "tmlr": ("TMLR", "JOURNAL", ["tmlr", "transactions on machine learning research"]),
-    "nature": ("Nature", "JOURNAL", ["nature"]),
-    "science": ("Science", "JOURNAL", ["science"]),
-    "prl": ("PRL", "JOURNAL", ["prl", "physical review letters"]),
-    "pre": ("PRE", "JOURNAL", ["pre", "physical review e"]),
-    "prx": ("PRX", "JOURNAL", ["prx", "physical review x"]),
-    "rmp": ("RMP", "JOURNAL", ["rmp", "reviews of modern physics"]),
-    "pnas": (
-        "PNAS",
-        "JOURNAL",
-        ["pnas", "proceedings of the national academy of sciences"],
-    ),
-    "tpami": (
-        "TPAMI",
-        "JOURNAL",
-        ["tpami", "ieee transactions on pattern analysis and machine intelligence"],
-    ),
-    "neco": ("Neural Computation", "JOURNAL", ["neco", "neural computation"]),
-    "tacl": (
-        "TACL",
-        "JOURNAL",
-        ["tacl", "transactions of the association for computational linguistics"],
-    ),
-}
 
 # Build reverse lookup: normalized alias -> venue slug
 _VENUE_ALIAS_MAP: dict[str, str] = {}
 for slug, (_, _, aliases) in VENUE_DATA.items():
     for alias in aliases:
         _VENUE_ALIAS_MAP[alias.lower()] = slug
-
-
-# Subject prefix mapping: abbreviated code -> full name
-SUBJECT_PREFIXES: dict[str, str] = {
-    "phy": "Physics",
-    "cs": "Computer Science",
-    "math": "Mathematics",
-    "prog": "Programming",
-    "stat": "Statistics",
-    "bio": "Biology",
-    "biology": "Biology",
-    "chem": "Chemistry",
-    "econ": "Economics",
-    "eng": "Engineering",
-    "neuro": "Neuroscience",
-    "phil": "Philosophy",
-}
-
-# Full-slug subjects that should NOT be split by prefix
-# These are treated as top-level categories with no subarea
-FULL_SLUG_SUBJECTS: dict[str, str] = {
-    "popular-science": "Popular Science",
-    "science-fiction": "Science Fiction",
-    "science-history": "History of Science",
-    "self-help": "Self Help",
-    "design": "Design",
-    "engineering": "Engineering",
-    "environment": "Environment",
-    "philosophy": "Philosophy",
-    "psychology": "Psychology",
-    "writing": "Writing",
-    "biology": "Biology",
-}
-
-# Context-aware subarea mapping: "prefix:subarea_slug" -> display_name
-# Falls back to generic SUBAREA_NAMES if no context-specific match
-_CONTEXT_SUBAREA_NAMES: dict[str, str] = {
-    # Physics-specific
-    "phy:general": "General Relativity",
-    "phy:quantum": "Quantum Mechanics",
-    "phy:statistical": "Statistical Mechanics",
-    "phy:mathematical": "Mathematical Physics",
-    # CS-specific
-    "cs:general": "General",
-    "cs:quantum": "Quantum Computing",
-    "cs:os": "Operating Systems",
-    # Math-specific
-    "math:general": "General",
-    "math:statistics": "Statistics",
-    # Programming-specific
-    "prog:general": "General",
-    "prog:design": "Software Design",
-    "prog:languages": "Programming Languages",
-}
-
-# Generic subarea name mapping (used when no context-specific match)
-SUBAREA_NAMES: dict[str, str] = {
-    "ml": "Machine Learning",
-    "ai": "Artificial Intelligence",
-    "ml-ai": "Machine Learning & AI",
-    "architecture": "Computer Architecture",
-    "vision": "Computer Vision",
-    "nlp": "Natural Language Processing",
-    "graphics": "Graphics",
-    "security": "Security",
-    "networks": "Networks",
-    "databases": "Databases",
-    "systems": "Systems",
-    "theory": "Theory",
-    "classical": "Classical Mechanics",
-    "field-theory": "Field Theory",
-    "qft": "Quantum Field Theory",
-    "condensed": "Condensed Matter",
-    "particle": "Particle Physics",
-    "astro": "Astrophysics",
-    "electrodynamics": "Electrodynamics",
-    "thermodynamics": "Thermodynamics",
-    "relativity": "Relativity",
-    "analysis": "Analysis",
-    "algebra": "Algebra",
-    "geometry": "Geometry",
-    "topology": "Topology",
-    "number-theory": "Number Theory",
-    "information-theory": "Information Theory",
-    "probability": "Probability",
-    "combinatorics": "Combinatorics",
-    "neuroscience": "Neuroscience",
-    "algorithms": "Algorithms",
-    "functional": "Functional Programming",
-    "oop": "Object-Oriented Programming",
-    "fp": "Functional Programming",
-    "compilers": "Compilers",
-}
 
 
 def parse_subject_name(slug: str) -> tuple[str, str | None, str]:
@@ -297,7 +85,7 @@ def parse_subject_name(slug: str) -> tuple[str, str | None, str]:
 
     # Try context-specific first, then generic, then title-case fallback
     subarea = (
-        _CONTEXT_SUBAREA_NAMES.get(context_key)
+        CONTEXT_SUBAREA_NAMES.get(context_key)
         or SUBAREA_NAMES.get(subarea_slug)
         or subarea_slug.replace("-", " ").title()
     )
@@ -502,95 +290,40 @@ def parse_entry(
         logger.debug("Skipping entry without ID in %s", source_file)
         return None
 
-    file_metadata = file_metadata or {}
+    state = EntryParseState(
+        entry=entry,
+        source_file=source_file,
+        file_metadata=file_metadata or {},
+        citation_key=citation_key,
+        entry_type_str=entry_type_str,
+    )
 
-    # Validate entry type
-    try:
-        entry_type_enum = EntryType(entry_type_str)
-    except ValueError:
-        # Default to misc for unknown types
-        entry_type_enum = EntryType.MISC
+    for normalizer in (
+        normalize_entry_type,
+        lambda current: normalize_title_and_year(
+            current,
+            clean_latex_string=clean_latex_string,
+        ),
+        normalize_file_path,
+        lambda current: pipeline_normalize_authors(
+            current,
+            parse_authors=parse_authors,
+        ),
+        lambda current: pipeline_normalize_venue(
+            current,
+            resolve_venue=normalize_venue,
+        ),
+        split_required_optional_fields,
+        apply_file_metadata,
+    ):
+        normalizer(state)
+
+    if state.entry_type is EntryType.MISC and entry_type_str:
         logger.debug("Unknown entry type '%s', defaulting to misc", entry_type_str)
+    if entry.get("year") and state.year is None:
+        logger.debug("Invalid year '%s' in %s", entry.get("year", ""), citation_key)
 
-    # Extract promoted fields and clean LaTeX encoding
-    title = clean_latex_string(entry.get("title", ""))
-    year_str = entry.get("year", "")
-
-    year: int | None = None
-    if year_str:
-        try:
-            # Handle year ranges like "2020-2021" by taking first year
-            year_clean = year_str.split("-")[0].strip()
-            year = int(year_clean)
-        except ValueError:
-            logger.debug("Invalid year '%s' in %s", year_str, citation_key)
-
-    # File path (parse BibTeX file field format ":path:type")
-    raw_file = entry.get("file", "").strip()
-    file_path = None
-    if raw_file:
-        # BibTeX file field format: ":path:type" or just "path"
-        if raw_file.startswith(":"):
-            # Format is ":path:type" - extract just the path
-            parts = raw_file.split(":")
-            # parts = ['', 'path', 'type'] for ":path:type"
-            if len(parts) >= 2:
-                file_path = parts[1].strip() or None
-        else:
-            # Plain path (no colons)
-            file_path = raw_file
-
-    # Parse authors
-    authors = parse_authors(entry.get("author", ""))
-
-    # Extract venue from booktitle (conferences) or journal (articles)
-    venue_slug: str | None = None
-    booktitle = entry.get("booktitle", "")
-    journal = entry.get("journal", "")
-
-    if booktitle:
-        venue_slug = normalize_venue(booktitle)
-    elif journal:
-        venue_slug = normalize_venue(journal)
-
-    # Separate required vs optional fields
-    required_set = REQUIRED_FIELDS.get(entry_type_str, set())
-    required_fields: dict[str, str] = {}
-    optional_fields: dict[str, str] = {}
-
-    for key, value in entry.items():
-        # Skip internal BibTeX parser fields and promoted fields
-        if key in {"ENTRYTYPE", "ID"} or key in PROMOTED_FIELDS:
-            continue
-
-        if key in required_set:
-            required_fields[key] = value
-        else:
-            optional_fields[key] = value
-
-    # Get file-level metadata
-    subject = file_metadata.get("subject")
-    topics = file_metadata.get("topics", [])
-    if isinstance(subject, list):
-        subject = subject[0] if subject else None
-    if isinstance(topics, str):
-        topics = [topics]
-
-    return {
-        "citation_key": citation_key,
-        "entry_type": entry_type_enum,
-        "title": title or f"[{citation_key}]",  # Fallback title
-        "year": year,
-        "file_path": file_path,
-        "authors": authors,
-        "required_fields": required_fields,
-        "optional_fields": optional_fields,
-        "source_file": source_file,
-        # New metadata fields
-        "subject": subject,
-        "topics": topics,
-        "venue_slug": venue_slug,
-    }
+    return state.as_dict()
 
 
 def scan_directory(directory: str | Path) -> list[dict]:
