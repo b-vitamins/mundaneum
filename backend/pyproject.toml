@@ -47,9 +47,6 @@ known-first-party = ["app"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-filterwarnings = [
-    "ignore:The event_loop fixture provided by pytest-asyncio has been redefined:DeprecationWarning",
-]
 
 [build-system]
 requires = ["poetry-core"]
