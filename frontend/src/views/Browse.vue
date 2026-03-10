@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type EntryListItem } from '@/api/client'
 import AppShell from '@/components/AppShell.vue'
@@ -27,11 +27,6 @@ const sortOptions: { value: SortField; label: string }[] = [
   { value: 'title', label: 'Title' },
   { value: 'year', label: 'Year' },
 ]
-
-const sortLabel = computed(() => {
-  const opt = sortOptions.find(o => o.value === sortBy.value)
-  return opt?.label || 'Date Added'
-})
 
 async function loadEntries(append = false) {
   if (!append) {

@@ -32,7 +32,7 @@ async function search() {
     if (filters.value.entry_type) activeFilters.entry_type = filters.value.entry_type
     if (filters.value.year_from) activeFilters.year_from = filters.value.year_from
     if (filters.value.year_to) activeFilters.year_to = filters.value.year_to
-    if (filters.value.read_only) activeFilters.read_only = filters.value.read_only
+    if (filters.value.read) activeFilters.read = filters.value.read
 
     const data = await api.search(query.value, activeFilters)
     results.value = data.hits
@@ -117,7 +117,7 @@ function clearFilters() {
 
         <div class="filter-group">
           <label class="checkbox-label">
-            <input type="checkbox" v-model="filters.read_only" />
+            <input type="checkbox" v-model="filters.read" />
             Read only
           </label>
         </div>
@@ -158,7 +158,7 @@ function clearFilters() {
               </div>
             </div>
             <div class="result-badges">
-              <span v-if="item.file_path" class="badge badge-accent">PDF</span>
+              <span v-if="item.has_pdf" class="badge badge-accent">PDF</span>
               <span v-if="item.read" class="badge badge-success">✓ Read</span>
             </div>
           </router-link>

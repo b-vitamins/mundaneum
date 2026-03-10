@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { api, type S2Paper } from '@/api/client'
 
 const props = defineProps<{
@@ -26,15 +26,14 @@ const fetchPapers = async () => {
   }
 }
 
-watch(() => props.type, fetchPapers)
-onMounted(fetchPapers)
+watch(() => [props.type, props.entryId], fetchPapers, { immediate: true })
 
 const expandedAbstracts = ref<Set<string>>(new Set())
 const toggleAbstract = (id: string) => {
   if (expandedAbstracts.value.has(id)) expandedAbstracts.value.delete(id)
   else expandedAbstracts.value.add(id)
 }
-const formatAuthors = (authors: any[]) => {
+const formatAuthors = (authors: S2Paper['authors']) => {
   if (!authors || !authors.length) return 'Unknown Author'
   if (authors.length <= 3) return authors.map(a => a.name).join(', ')
   return authors.slice(0, 3).map(a => a.name).join(', ') + ` +${authors.length - 3} authors`

@@ -1,237 +1,34 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { api, type GraphNode, type GraphData } from '@/api/client'
-import { useForceGraph } from '@/composables/useForceGraph'
+import { useGraphExplorer } from '@/composables/useGraphExplorer'
 
-const route = useRoute()
-const router = useRouter()
-const entryId = route.params.id as string
+const {
+  activeTab,
+  canvasRef,
+  depth,
+  entryId,
+  error,
+  filterKeyword,
+  filterYearMax,
+  filterYearMin,
+  fmtCount,
+  formatAuthors,
+  goToEntry,
+  graph,
+  graphData,
+  loading,
+  maxHistCount,
+  maxNodes,
+  openOnS2,
+  recenterOn,
+  router,
+  showPanel,
+  syncing,
+  yearHistogram,
+  yearMax,
+  yearMin,
+} = useGraphExplorer()
 
-// Graph engine
-const graph = useForceGraph()
-const canvasRef = ref<HTMLCanvasElement | null>(null)
-
-// UI state
-const loading = ref(true)
-const error = ref('')
-const depth = ref(1)
-const maxNodes = ref(40)
-const fullGraphData = ref<GraphData | null>(null)  // Cached full 200-node response
-const showPanel = ref(true)
-const graphData = ref<GraphData | null>(null)
-const activeTab = ref<'graph' | 'prior' | 'derivative'>('graph')
-
-// Filter state
-const filterKeyword = ref('')
-const yearMin = ref(1990)
-const yearMax = ref(2026)
-const filterYearMin = ref(1990)
-const filterYearMax = ref(2026)
-
-// Computed: year histogram + bounds
-const yearHistogram = computed(() => {
-  if (!graphData.value) return []
-  const counts: Record<number, number> = {}
-  for (const n of graphData.value.nodes) {
-    if (n.year) counts[n.year] = (counts[n.year] || 0) + 1
-  }
-  const result: { year: number; count: number }[] = []
-  for (let y = yearMin.value; y <= yearMax.value; y++) {
-    result.push({ year: y, count: counts[y] || 0 })
-  }
-  return result
-})
-
-const maxHistCount = computed(() => Math.max(1, ...yearHistogram.value.map(h => h.count)))
-
-const syncing = ref(false)
-
-// Fetch graph data (over-fetch 200 nodes, cache for client-side filtering)
-const fetchGraph = async () => {
-  loading.value = true
-  error.value = ''
-  syncing.value = false
-  try {
-    const data = await api.getGraph(entryId, depth.value, 200)
-    fullGraphData.value = data
-
-    if (data.nodes.length === 0) {
-      const msg = (data as any).message
-      error.value = msg || 'No citation data available for this entry.'
-      return
-    }
-    // Set year bounds
-    const years = data.nodes.map(n => n.year).filter(Boolean) as number[]
-    if (years.length > 0) {
-      yearMin.value = Math.min(...years)
-      yearMax.value = Math.max(...years)
-      filterYearMin.value = yearMin.value
-      filterYearMax.value = yearMax.value
-    }
-    // Load sliced data based on current slider value
-    sliceAndLoad(data, maxNodes.value)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load graph data.'
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
-}
-
-// Slice cached data to N nodes and reload graph (instant, no API call)
-const sliceAndLoad = (data: GraphData, nodeCount: number) => {
-  // Center node is always included; slice the rest by position (already ranked)
-  const centerId = data.center_id
-  const centerNode = data.nodes.find(n => n.id === centerId)
-  const otherNodes = data.nodes.filter(n => n.id !== centerId)
-  const sliced = centerNode
-    ? [centerNode, ...otherNodes.slice(0, nodeCount - 1)]
-    : otherNodes.slice(0, nodeCount)
-  const slicedIds = new Set(sliced.map(n => n.id))
-
-  // Filter edges to only include those between sliced nodes
-  const slicedEdges = data.edges.filter(
-    e => slicedIds.has(e.source) && slicedIds.has(e.target)
-  )
-  const slicedSimEdges = data.similarity_edges.filter(
-    e => slicedIds.has(e.source) && slicedIds.has(e.target)
-  )
-
-  const slicedData: GraphData = {
-    ...data,
-    nodes: sliced,
-    edges: slicedEdges,
-    similarity_edges: slicedSimEdges,
-  }
-  graphData.value = slicedData
-  graph.loadData(slicedData)
-}
-
-// Initialize canvas
-onMounted(() => {
-  if (canvasRef.value) {
-    graph.init(canvasRef.value)
-  }
-  fetchGraph()
-
-  // Keyboard shortcuts
-  window.addEventListener('keydown', onKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown)
-})
-
-// Re-fetch only on depth change
-watch(depth, fetchGraph)
-// Slider: instant client-side filtering from cached data (no API call)
-watch(maxNodes, () => {
-  if (fullGraphData.value && fullGraphData.value.nodes.length > 0) {
-    sliceAndLoad(fullGraphData.value, maxNodes.value)
-  }
-})
-
-// Node click: select and show panel
-graph.onNodeClick((_node: GraphNode) => {
-  showPanel.value = true
-})
-
-// Node double-click: re-center on that node if in library
-graph.onNodeDblClick((node: GraphNode) => {
-  if (node.in_library && node.entry_id) {
-    router.push({ name: 'graph', params: { id: node.entry_id } })
-  }
-})
-
-// Keyboard
-function onKeydown(e: KeyboardEvent) {
-  if (e.target instanceof HTMLInputElement) return
-
-  switch (e.key) {
-    case 'Escape':
-      graph.selectedNode.value = null
-      showPanel.value = false
-      break
-    case 'r':
-    case 'R':
-      graph.resetView()
-      break
-    case '+':
-    case '=':
-      graph.zoomIn()
-      break
-    case '-':
-      graph.zoomOut()
-      break
-  }
-}
-
-// Navigate to entry
-function goToEntry(id: string) {
-  router.push({ name: 'entry', params: { id } })
-}
-
-// Open on S2
-function openOnS2(s2Id: string) {
-  window.open(`https://www.semanticscholar.org/paper/${s2Id}`, '_blank')
-}
-
-// Re-center graph on a different entry
-function recenterOn(node: GraphNode) {
-  if (node.in_library && node.entry_id) {
-    router.push({ name: 'graph', params: { id: node.entry_id } })
-  }
-}
-
-// Format authors
-function formatAuthors(authors: string[]): string {
-  if (authors.length <= 3) return authors.join(', ')
-  return authors.slice(0, 3).join(', ') + ` +${authors.length - 3}`
-}
-// Format citation count
-function fmtCount(n: number): string {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
-  return n.toString()
-}
-
-// Apply filters
-function applyFilter() {
-  const kw = filterKeyword.value.trim().toLowerCase()
-  const yMin = filterYearMin.value
-  const yMax = filterYearMax.value
-
-  // No filter active?
-  const noYearFilter = yMin <= yearMin.value && yMax >= yearMax.value
-  const noKeywordFilter = kw === ''
-
-  if (noYearFilter && noKeywordFilter) {
-    graph.setFilter(null)
-    return
-  }
-
-  graph.setFilter((node) => {
-    // Year filter
-    if (node.year && (node.year < yMin || node.year > yMax)) return false
-    // Keyword filter
-    if (kw) {
-      const text = [node.title, ...node.authors, node.venue || ''].join(' ').toLowerCase()
-      if (!text.includes(kw)) return false
-    }
-    return true
-  })
-}
-
-// Watch filter changes
-watch([filterYearMin, filterYearMax], applyFilter)
-watch(filterKeyword, () => {
-  // Debounce keyword
-  const val = filterKeyword.value
-  setTimeout(() => {
-    if (filterKeyword.value === val) applyFilter()
-  }, 200)
-})
+void canvasRef
 </script>
 
 <template>
