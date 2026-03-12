@@ -38,4 +38,9 @@ execFileSync(
   }
 )
 
+execFileSync('npx', ['prettier', '--write', outputPath], {
+  cwd: frontendDir,
+  stdio: 'inherit',
+})
+
 rmSync(schemaPath)
