@@ -10,7 +10,7 @@ COPY frontend/ ./
 RUN npx vite build
 
 # Stage 2: Install backend dependencies using poetry directly
-FROM docker.io/library/python:3.11-slim AS backend-builder
+FROM docker.io/library/python:3.11-slim-bookworm AS backend-builder
 WORKDIR /backend
 RUN pip install --no-cache-dir poetry
 COPY backend/pyproject.toml backend/poetry.lock ./
@@ -23,15 +23,30 @@ RUN python -m venv /opt/venv && \
     pip install psycopg2-binary
 
 # Stage 3: Runtime
-FROM docker.io/library/python:3.11-slim
+FROM docker.io/library/python:3.11-slim-bookworm
 
-# Install nginx and supervisor
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx \
-    supervisor \
-    curl \
-    netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
+# Install nginx and supervisor.
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apt-get update -o Acquire::Retries=3 && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done; \
+    for attempt in 1 2 3 4 5; do \
+        apt-get install -y --no-install-recommends \
+            git \
+            nginx \
+            supervisor \
+            curl \
+            netcat-openbsd && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
 COPY --from=backend-builder /opt/venv /opt/venv

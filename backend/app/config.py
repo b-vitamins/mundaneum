@@ -42,8 +42,12 @@ class Settings(BaseSettings):
     minio_access_key: str = "mundaneum"
     minio_secret_key: str = "mundaneumpass"
 
-    # Data directory
-    bib_directory: str = "/data"
+    # Bibliography source
+    bibliography_repo_url: str = "https://github.com/b-vitamins/bibliography/"
+    bibliography_checkout_path: str = "/tmp/mundaneum/bibliography"
+    bibliography_repo_ref: str | None = None
+    bibliography_sync_timeout_seconds: int = 300
+    bibliography_runtime_sync_enabled: bool = True
 
     # Semantic Scholar
     s2_api_key: str | None = None
@@ -63,7 +67,13 @@ class Settings(BaseSettings):
     s2_qdrant_url: str = "http://localhost:6333"
     s2_qdrant_api_key: str | None = None
 
-    @field_validator("meili_api_key", "s2_api_key", "s2_qdrant_api_key", mode="before")
+    @field_validator(
+        "meili_api_key",
+        "s2_api_key",
+        "s2_qdrant_api_key",
+        "bibliography_repo_ref",
+        mode="before",
+    )
     @classmethod
     def blank_optional_values_are_none(cls, value: str | None) -> str | None:
         """Normalize empty env-file secrets to None instead of empty strings."""

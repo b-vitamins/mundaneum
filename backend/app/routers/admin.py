@@ -86,7 +86,9 @@ async def start_ingest(
 
     If already running, returns current status without restarting.
     """
-    return await start_ingest_service(http_request.app.state.context.runtime, request.directory)
+    return await start_ingest_service(
+        http_request.app.state.context.runtime, request.directory
+    )
 
 
 @router.get("/health", response_model=HealthResponse)

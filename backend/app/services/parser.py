@@ -1,14 +1,12 @@
 """
 BibTeX parser service for Mundaneum.
 
-Scans directories recursively for .bib files and parses entries
-according to the official BibTeX specification.
+Parses bibliography files according to the official BibTeX specification.
 """
 
 import re
 import unicodedata
 from pathlib import Path
-from typing import Iterator
 
 import bibtexparser
 from bibtexparser.bparser import BibTexParser
@@ -17,6 +15,10 @@ from pylatexenc.latex2text import LatexNodes2Text
 
 from app.logging import get_logger
 from app.models import EntryType
+from app.services.bibliography_contract import (
+    BibliographySourceFile,
+    discover_bibliography_sources,
+)
 from app.services.parser_catalogs import (
     CONTEXT_SUBAREA_NAMES,
     FULL_SLUG_SUBJECTS,
@@ -81,41 +83,6 @@ def parse_subject_name(slug: str) -> tuple[str, str | None, str]:
     )
 
     return parent, subarea, subarea
-
-
-def parse_mundaneum_comment(content: str) -> dict[str, str | list[str]]:
-    """
-    Parse @COMMENT{mundaneum: ...} blocks from raw file content.
-
-    Returns dict with keys like 'subject', 'topics'.
-    Topics are returned as a list (split by |).
-    """
-    result: dict[str, str | list[str]] = {}
-
-    # Match @COMMENT{mundaneum: ...} - case insensitive
-    pattern = r"@COMMENT\{mundaneum:\s*([^}]+)\}"
-    match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
-
-    if not match:
-        return result
-
-    # Parse key = value pairs
-    mundaneum_content = match.group(1)
-    for line in mundaneum_content.split("\n"):
-        line = line.strip()
-        if "=" in line:
-            key, value = line.split("=", 1)
-            key = key.strip().lower()
-            value = value.strip().rstrip(",")
-
-            if key == "topics":
-                # Split by | for multiple topics
-                topics = [t.strip() for t in value.split("|")]
-                result["topics"] = [t for t in topics if t]
-            else:
-                result[key] = value
-
-    return result
 
 
 def normalize_venue(venue_str: str) -> str | None:
@@ -210,17 +177,30 @@ _PARSER_PASSES = build_parser_passes(
 )
 
 
-def find_bib_files(directory: Path) -> Iterator[Path]:
-    """Recursively find all .bib files in a directory."""
-    if not directory.exists():
-        logger.warning("Directory does not exist: %s", directory)
-        return
-    for path in directory.rglob("*.bib"):
-        if path.is_file():
-            yield path
+def build_source_file(
+    filepath: Path,
+    *,
+    root: Path | None = None,
+    role: str = "canonical",
+    subject: str | None = None,
+    topics: tuple[str, ...] = (),
+) -> BibliographySourceFile:
+    """Construct a stable parse context for one BibTeX file."""
+    root = (root or filepath.parent).resolve()
+    return BibliographySourceFile(
+        path=filepath.resolve(),
+        source_file=filepath.resolve().relative_to(root).as_posix(),
+        role=role,
+        subject=subject,
+        topics=topics,
+    )
 
 
-def parse_bib_file(filepath: Path) -> list[dict]:
+def parse_bib_file(
+    filepath: Path,
+    *,
+    source: BibliographySourceFile | None = None,
+) -> list[dict]:
     """
     Parse a single .bib file and return list of entry dicts.
 
@@ -234,10 +214,13 @@ def parse_bib_file(filepath: Path) -> list[dict]:
     - required_fields: dict
     - optional_fields: dict
     - source_file: str
-    - subject: str | None (from file-level @COMMENT)
-    - topics: list[str] (from file-level @COMMENT)
+    - source_role: str
+    - subject: str | None (from bibliography contract)
+    - topics: list[str] (from bibliography contract)
     - venue_slug: str | None (normalized from booktitle/journal)
     """
+    source = source or build_source_file(filepath)
+    filepath = source.path
     parser = BibTexParser(common_strings=True)
     parser.customization = convert_to_unicode
 
@@ -248,9 +231,6 @@ def parse_bib_file(filepath: Path) -> list[dict]:
         logger.error("Error reading %s: %s", filepath, e)
         return []
 
-    # Parse file-level @COMMENT{mundaneum: ...} metadata
-    file_metadata = parse_mundaneum_comment(raw_content)
-
     try:
         bib_database = bibtexparser.loads(raw_content, parser=parser)
     except Exception as e:
@@ -260,7 +240,15 @@ def parse_bib_file(filepath: Path) -> list[dict]:
     entries = []
     for entry in bib_database.entries:
         try:
-            parsed = parse_entry(entry, str(filepath), file_metadata)
+            parsed = parse_entry(
+                entry,
+                source_file=source.source_file,
+                source_role=source.role,
+                file_metadata={
+                    "subject": source.subject,
+                    "topics": list(source.topics),
+                },
+            )
             if parsed:
                 entries.append(parsed)
         except Exception as e:
@@ -277,6 +265,7 @@ def parse_bib_file(filepath: Path) -> list[dict]:
 def parse_entry(
     entry: dict,
     source_file: str,
+    source_role: str = "canonical",
     file_metadata: dict[str, str | list[str]] | None = None,
 ) -> dict | None:
     """Parse a single BibTeX entry into our schema."""
@@ -290,6 +279,7 @@ def parse_entry(
     state = EntryParseState(
         entry=entry,
         source_file=source_file,
+        source_role=source_role,
         file_metadata=file_metadata or {},
         citation_key=citation_key,
         entry_type_str=entry_type_str,
@@ -314,10 +304,10 @@ def scan_directory(directory: str | Path) -> list[dict]:
     directory = Path(directory)
     all_entries = []
 
-    for bib_path in find_bib_files(directory):
-        entries = parse_bib_file(bib_path)
+    for source in discover_bibliography_sources(directory):
+        entries = parse_bib_file(source.path, source=source)
         all_entries.extend(entries)
-        logger.info("Parsed %d entries from %s", len(entries), bib_path.name)
+        logger.info("Parsed %d entries from %s", len(entries), source.source_file)
 
     logger.info("Total: %d entries from %s", len(all_entries), directory)
     return all_entries

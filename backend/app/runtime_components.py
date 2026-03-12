@@ -7,9 +7,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from app.config import settings
 from app.database import check_db_health
 from app.logging import get_logger
 from app.runtime_models import ManagedJob, RuntimeDefinition, RuntimeResources
+from app.services.bibliography_repository import BibliographyRepositoryError
 from app.services.ingest import ensure_search_index_ready, ingest_bib_file
 from app.services.system_health import HealthContributor
 from app.services.worker import IngestionWorker
@@ -22,37 +24,68 @@ class BibliographyIngestJob(ManagedJob):
 
     name = "bibliography_ingest"
 
-    def __init__(self, *, bibliography_path: Path, worker: IngestionWorker):
-        self._bibliography_path = bibliography_path
+    def __init__(self, *, resources: RuntimeResources, worker: IngestionWorker):
+        self._resources = resources
         self._worker = worker
+        self._bootstrap_task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        if self._bibliography_path.exists() and self._bibliography_path.is_dir():
-            logger.info(
-                "Bibliography directory found, starting background ingestion from %s",
-                self._bibliography_path,
-            )
-            await self._worker.start(self._bibliography_path)
-        else:
-            logger.info(
-                "No bibliography directory at %s, skipping auto-ingest",
-                self._bibliography_path,
-            )
+        if self._bootstrap_task is None or self._bootstrap_task.done():
+            self._bootstrap_task = asyncio.create_task(self._bootstrap_ingest())
 
     async def trigger(self, directory: Path | None = None) -> dict:
         """Start ingestion manually or return current progress when already running."""
-        if self._worker.is_running:
+        if self._worker.is_running or self._is_preparing():
             return {"message": "Ingestion already running", **self.status()}
 
-        target_directory = directory or self._bibliography_path
+        target_directory = directory
+        if target_directory is None:
+            target_directory = (
+                await self._resources.bibliography_repository.ensure_checkout(
+                    refresh=settings.bibliography_runtime_sync_enabled
+                )
+            )
         await self._worker.start(target_directory)
         return {"message": "Ingestion started", **self.status()}
 
     async def stop(self) -> None:
+        if self._bootstrap_task is not None and not self._bootstrap_task.done():
+            self._bootstrap_task.cancel()
+            try:
+                await self._bootstrap_task
+            except asyncio.CancelledError:
+                pass
+            self._bootstrap_task = None
         await self._worker.stop()
 
     def status(self) -> dict:
-        return self._worker.get_status()
+        return {
+            **self._worker.get_status(),
+            "preparing": self._is_preparing(),
+        }
+
+    async def _bootstrap_ingest(self) -> None:
+        try:
+            bibliography_path = (
+                await self._resources.bibliography_repository.ensure_checkout(
+                    refresh=settings.bibliography_runtime_sync_enabled
+                )
+            )
+        except BibliographyRepositoryError as exc:
+            logger.warning(
+                "Could not prepare bibliography checkout, skipping auto-ingest: %s",
+                exc,
+            )
+            return
+
+        logger.info(
+            "Bibliography checkout ready, starting background ingestion from %s",
+            bibliography_path,
+        )
+        await self._worker.start(bibliography_path)
+
+    def _is_preparing(self) -> bool:
+        return self._bootstrap_task is not None and not self._bootstrap_task.done()
 
 
 class S2BackfillJob(ManagedJob):
@@ -106,7 +139,7 @@ class S2BackfillJob(ManagedJob):
 
 def build_bibliography_ingest_job(resources: RuntimeResources) -> ManagedJob:
     return BibliographyIngestJob(
-        bibliography_path=resources.bibliography_path,
+        resources=resources,
         worker=IngestionWorker(
             session_factory=resources.services.database.session_factory,
             ensure_index_ready=lambda: ensure_search_index_ready(

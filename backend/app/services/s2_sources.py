@@ -53,7 +53,9 @@ class LocalCorpus:
         row = self._store.fetchone(CORPUS_ID_TO_SHA_QUERY.prepare(corpus_id))
         return row[0] if row else None
 
-    def _batch_corpus_id_to_sha(self, corpus_ids: list[int], chunk_size: int = 500) -> dict[int, str]:
+    def _batch_corpus_id_to_sha(
+        self, corpus_ids: list[int], chunk_size: int = 500
+    ) -> dict[int, str]:
         if not corpus_ids:
             return {}
 
@@ -61,7 +63,9 @@ class LocalCorpus:
         try:
             for index in range(0, len(corpus_ids), chunk_size):
                 chunk = corpus_ids[index : index + chunk_size]
-                rows = self._store.fetchall(BATCH_CORPUS_ID_TO_SHA_QUERY.prepare(*chunk))
+                rows = self._store.fetchall(
+                    BATCH_CORPUS_ID_TO_SHA_QUERY.prepare(*chunk)
+                )
                 for corpus_id, sha in rows:
                     result[corpus_id] = sha
         except Exception as exc:
@@ -91,9 +95,13 @@ class LocalCorpus:
                 corpus_id=corpus_id,
                 s2_id=self._corpus_id_to_sha(corpus_id),
             )
-            abstract_row = self._store.fetchone(ABSTRACT_BY_CORPUS_ID_QUERY.prepare(corpus_id))
+            abstract_row = self._store.fetchone(
+                ABSTRACT_BY_CORPUS_ID_QUERY.prepare(corpus_id)
+            )
             tldr_row = self._store.fetchone(TLDR_BY_CORPUS_ID_QUERY.prepare(corpus_id))
-            author_rows = self._store.fetchall(AUTHORS_BY_CORPUS_ID_QUERY.prepare(corpus_id))
+            author_rows = self._store.fetchall(
+                AUTHORS_BY_CORPUS_ID_QUERY.prepare(corpus_id)
+            )
             return CorpusRowMapper.enrich_paper(
                 paper,
                 abstract_row=abstract_row,
@@ -178,7 +186,9 @@ class LocalCorpus:
             )
             return row[0] if row else None
         except Exception as exc:
-            logger.warning("LocalCorpus.resolve_id(%s, %s): %s", id_type, identifier, exc)
+            logger.warning(
+                "LocalCorpus.resolve_id(%s, %s): %s", id_type, identifier, exc
+            )
             return None
 
     async def search(self, query: str, limit: int = 10) -> list[PaperRecord] | None:

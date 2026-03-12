@@ -61,5 +61,7 @@ class HealthResponse(BaseModel):
     status: str
     database: str
     search: str
-    bib_directory: str
+    bibliography: str
+    bibliography_repo_url: str
+    bibliography_checkout_path: str
     bib_files_count: int

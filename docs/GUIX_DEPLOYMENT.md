@@ -5,6 +5,7 @@ This document describes how to deploy Mundaneum as an OCI container on a Guix sy
 ## Prerequisites
 
 1. **Running services** (via `oci-container-service-type` or native Guix services):
+
    - PostgreSQL with a `mundaneum` database
    - Meilisearch
    - Qdrant (optional, for embeddings)
@@ -25,21 +26,22 @@ Add to your `oci-containers.scm`:
     (image "ghcr.io/b-vitamins/mundaneum:latest")
     (network "host")
     (ports '(("8080" . "8080")))
-    (volumes (list 
-               ;; BibTeX files and PDFs (read-only source of truth)
-               '("/data/bibliography" . "/data")
-               ;; Persistent app state (optional, for caching)
+    (volumes (list
+               ;; Persistent app state for the bibliography checkout cache
                '("/var/lib/mundaneum" . "/var/lib/mundaneum")))
-    (environment 
-      `(("DATABASE_URL" . ,(string-append 
-                            "postgresql://mundaneum:" 
-                            mundaneum-db-password 
+    (environment
+      `(("DATABASE_URL" . ,(string-append
+                            "postgresql://mundaneum:"
+                            mundaneum-db-password
                             "@localhost:5432/mundaneum"))
         ("MEILI_URL" . "http://localhost:7700")
         ("MEILI_API_KEY" . ,meili-master-key)
         ("QDRANT_URL" . "http://localhost:6333")
         ("EMBEDDINGS_URL" . "http://localhost:8081")
-        ("BIB_DIRECTORY" . "/data")))))
+        ("BIBLIOGRAPHY_REPO_URL" . "https://github.com/b-vitamins/bibliography/")
+        ("BIBLIOGRAPHY_CHECKOUT_PATH" . "/var/lib/mundaneum/bibliography")
+        ("BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS" . "300")
+        ("BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED" . "true")))))
 ```
 
 ## System Configuration
@@ -69,18 +71,21 @@ Add a role for Mundaneum:
 ## Deployment Steps
 
 1. **Build locally** (optional, to test):
+
    ```bash
    cd /path/to/mundaneum
    docker build -t mundaneum:test .
    ```
 
 2. **Push to GHCR** (handled by CI on git push):
+
    ```bash
    git tag v1.0.0
    git push origin v1.0.0
    ```
 
 3. **Reconfigure system**:
+
    ```bash
    sudo guix system reconfigure /path/to/mileva.scm
    ```
@@ -92,9 +97,8 @@ Add a role for Mundaneum:
 
 ## Data Volumes
 
-| Volume | Mount Point | Purpose |
-|--------|-------------|---------|
-| `/data/bibliography` | `/data` | BibTeX files and PDFs (read-only) |
+| Volume               | Mount Point          | Purpose              |
+| -------------------- | -------------------- | -------------------- |
 | `/var/lib/mundaneum` | `/var/lib/mundaneum` | App cache (optional) |
 
 Note: PostgreSQL data is managed by the native `postgresql-service-type`, not this container.

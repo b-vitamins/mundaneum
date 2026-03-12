@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_events, get_search_index
+from app.dependencies import get_bibliography_repository, get_events, get_search_index
 from app.exceptions import ValidationError
 from app.logging import get_logger
+from app.services.bibliography_repository import BibliographyRepositoryService
 from app.services.domain_events import DomainEventBus
 from app.services.ingest import ingest_directory
 from app.services.sync import SearchIndexService
@@ -62,25 +63,31 @@ async def import_bibtex(
     db: AsyncSession = Depends(get_db),
     search_index: SearchIndexService = Depends(get_search_index),
     event_bus: DomainEventBus = Depends(get_events),
+    bibliography_repository: BibliographyRepositoryService = Depends(
+        get_bibliography_repository
+    ),
 ):
     """
     Import BibTeX files from a directory.
 
     If directory is not specified, uses the configured default.
     """
-    directory = request.directory or settings.bib_directory
-
-    # Validate directory exists
-    path = Path(directory)
+    path = (
+        Path(request.directory)
+        if request.directory is not None
+        else await bibliography_repository.ensure_checkout(
+            refresh=settings.bibliography_runtime_sync_enabled
+        )
+    )
     if not path.exists():
         raise ValidationError("Directory does not exist")
     if not path.is_dir():
         raise ValidationError("Path is not a directory")
 
-    logger.info("Starting import from: %s", directory)
+    logger.info("Starting import from: %s", path)
     result = await ingest_directory(
         db,
-        directory,
+        path,
         search_index=search_index,
         event_bus=event_bus,
     )

@@ -51,7 +51,9 @@ async def get_graph(
     entry_id_str = str(entry_id)
 
     # Fire background sync (non-blocking — enriches data for next request)
-    background_tasks.add_task(background_sync_entry, s2_runtime.orchestrator, entry_id_str)
+    background_tasks.add_task(
+        background_sync_entry, s2_runtime.orchestrator, entry_id_str
+    )
 
     s2_id = await resolve_graph_center_s2_id(entry_id_str, db, provider, local)
 

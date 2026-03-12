@@ -58,7 +58,9 @@ class DuckDBQuerySpec:
         value_count: int | None = None,
         limit: int | None = None,
     ) -> str:
-        statement = self.fallback_sql if use_fallback and self.fallback_sql else self.sql
+        statement = (
+            self.fallback_sql if use_fallback and self.fallback_sql else self.sql
+        )
         if self.expand_placeholders:
             if value_count is None or value_count < 1:
                 raise ValueError("value_count must be provided for placeholder queries")
@@ -68,7 +70,9 @@ class DuckDBQuerySpec:
             statement += " ORDER BY isinfluential DESC LIMIT ?"
         return statement
 
-    def bind(self, params: Sequence[object], *, limit: int | None = None) -> list[object]:
+    def bind(
+        self, params: Sequence[object], *, limit: int | None = None
+    ) -> list[object]:
         bound = list(params)
         if self.prioritized_limit and limit is not None:
             bound.append(int(limit))
@@ -85,8 +89,7 @@ SHA_TO_CORPUS_ID_QUERY = DuckDBQuerySpec(
 CORPUS_ID_TO_SHA_QUERY = DuckDBQuerySpec(
     "SELECT sha FROM paper_ids_by_corpus WHERE corpusid = ? AND is_primary = true LIMIT 1",
     fallback_sql=(
-        "SELECT sha FROM paper_ids WHERE corpusid = ? "
-        "AND is_primary = true LIMIT 1"
+        "SELECT sha FROM paper_ids WHERE corpusid = ? " "AND is_primary = true LIMIT 1"
     ),
 )
 
@@ -113,9 +116,7 @@ ABSTRACT_BY_CORPUS_ID_QUERY = DuckDBQuerySpec(
     "SELECT abstract FROM abstracts WHERE corpusid = ?"
 )
 
-TLDR_BY_CORPUS_ID_QUERY = DuckDBQuerySpec(
-    "SELECT text FROM tldrs WHERE corpusid = ?"
-)
+TLDR_BY_CORPUS_ID_QUERY = DuckDBQuerySpec("SELECT text FROM tldrs WHERE corpusid = ?")
 
 AUTHORS_BY_CORPUS_ID_QUERY = DuckDBQuerySpec(
     "SELECT authorid, name FROM paper_authors WHERE corpusid = ? ORDER BY position"
@@ -129,8 +130,7 @@ REFERENCES_BY_CITING_QUERY = DuckDBQuerySpec(
 CITATIONS_BY_CITED_QUERY = DuckDBQuerySpec(
     "SELECT citingcorpusid, isinfluential FROM citations_by_cited WHERE citedcorpusid = ?",
     fallback_sql=(
-        "SELECT citingcorpusid, isinfluential FROM citations "
-        "WHERE citedcorpusid = ?"
+        "SELECT citingcorpusid, isinfluential FROM citations " "WHERE citedcorpusid = ?"
     ),
     prioritized_limit=True,
 )

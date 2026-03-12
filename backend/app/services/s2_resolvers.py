@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 class Resolver(Protocol):
     """Map a library Entry to an S2 paper ID."""
 
-    async def resolve(self, entry: Entry, transport: S2Transport) -> str | None: ...
+    async def resolve(self, entry: Entry, transport: S2Transport) -> str | None:
+        ...
 
 
 class DOIResolver:

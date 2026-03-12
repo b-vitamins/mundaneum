@@ -30,7 +30,9 @@ async def create_collection(
     await db.commit()
 
     logger.info("Created collection: %s", collection.name)
-    return CollectionResponse(id=str(collection.id), name=collection.name, entry_count=0)
+    return CollectionResponse(
+        id=str(collection.id), name=collection.name, entry_count=0
+    )
 
 
 async def add_entry_to_collection(

@@ -73,7 +73,9 @@ class SyncOrchestrator:
                 if not s2_id:
                     s2_id = await self._resolver.resolve(entry)
                     if not s2_id:
-                        logger.warning("Could not resolve S2 ID for '%s'", entry.title[:40])
+                        logger.warning(
+                            "Could not resolve S2 ID for '%s'", entry.title[:40]
+                        )
                         return SyncStatus.NO_MATCH
                     await store.set_entry_s2_id(entry_id, s2_id)
                     await store.commit()

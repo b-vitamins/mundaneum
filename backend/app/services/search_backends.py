@@ -123,7 +123,9 @@ class DatabaseSearchBackend:
             .distinct()
         )
         filtered_ids = compile_database_query(base_ids, query)
-        total = await self.db.scalar(select(func.count()).select_from(filtered_ids.subquery()))
+        total = await self.db.scalar(
+            select(func.count()).select_from(filtered_ids.subquery())
+        )
 
         bounded_limit = min(query.limit, 100)
         ordered_ids_query = filtered_ids.offset(query.offset).limit(bounded_limit)

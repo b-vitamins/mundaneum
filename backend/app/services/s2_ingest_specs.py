@@ -215,7 +215,9 @@ DATASET_SPECS: dict[str, DatasetSpec] = {
         name="abstracts",
         table_name="abstracts",
         schema={"corpusid": "INTEGER", "abstract": "VARCHAR"},
-        insert_templates=("INSERT INTO abstracts SELECT corpusid, abstract FROM {src}",),
+        insert_templates=(
+            "INSERT INTO abstracts SELECT corpusid, abstract FROM {src}",
+        ),
     ),
     "tldrs": DatasetSpec(
         name="tldrs",

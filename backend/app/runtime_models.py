@@ -5,9 +5,9 @@ Generic runtime contracts and configuration.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable
 
+from app.services.bibliography_repository import BibliographyRepositoryService
 from app.services.domain_events import DomainEventBus
 from app.services.service_container import ServiceContainer
 from app.services.system_health import HealthContributor
@@ -45,7 +45,7 @@ class RuntimeResources:
 
     services: ServiceContainer
     events: DomainEventBus
-    bibliography_path: Path
+    bibliography_repository: BibliographyRepositoryService
     backfill_policy: BackfillPolicy
 
 

@@ -84,7 +84,9 @@ def main() -> None:
 
     if args.command == "download":
         if not settings.api_key:
-            logger.error("S2_API_KEY is required for downloading datasets. Set it in .env")
+            logger.error(
+                "S2_API_KEY is required for downloading datasets. Set it in .env"
+            )
             sys.exit(1)
 
         datasets = _dataset_args(args.datasets, args.all_datasets)

@@ -5,6 +5,7 @@ Explicit process-owned service container for Mundaneum.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import meilisearch
@@ -12,6 +13,7 @@ from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.services.bibliography_repository import BibliographyRepositoryService
 from app.services.storage import StorageService
 from app.services.sync import SearchIndexService
 
@@ -38,10 +40,16 @@ class StorageServices:
 
 
 @dataclass(slots=True)
+class BibliographyServices:
+    repository: BibliographyRepositoryService
+
+
+@dataclass(slots=True)
 class ServiceContainer:
     database: DatabaseServices
     search: SearchServices
     storage: StorageServices
+    bibliography: BibliographyServices
     s2_runtime: "S2Runtime"
 
 
@@ -80,6 +88,14 @@ def build_service_container() -> ServiceContainer:
         storage=StorageServices(
             client=storage_client,
             service=StorageService(storage_client),
+        ),
+        bibliography=BibliographyServices(
+            repository=BibliographyRepositoryService(
+                repo_url=settings.bibliography_repo_url,
+                checkout_path=Path(settings.bibliography_checkout_path),
+                ref=settings.bibliography_repo_ref,
+                timeout_seconds=settings.bibliography_sync_timeout_seconds,
+            )
         ),
         s2_runtime=build_s2_runtime(session_factory=database.session_factory),
     )

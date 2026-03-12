@@ -20,7 +20,11 @@ class EntryMetadata:
     def get(self, *names: str) -> str | None:
         for fields in (self.required_fields, self.optional_fields):
             for name in names:
-                value = fields.get(name) or fields.get(name.upper()) or fields.get(name.lower())
+                value = (
+                    fields.get(name)
+                    or fields.get(name.upper())
+                    or fields.get(name.lower())
+                )
                 if isinstance(value, str) and value.strip():
                     return value.strip()
         return None

@@ -5,7 +5,6 @@ Application runtime wiring for Mundaneum.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from app.config import settings
 from app.runtime_components import DEFAULT_RUNTIME_DEFINITION
@@ -69,11 +68,10 @@ def build_app_runtime(
     events: DomainEventBus,
     definition: RuntimeDefinition | None = None,
 ) -> AppRuntime:
-    bibliography_path = Path(settings.bib_directory)
     runtime_resources = RuntimeResources(
         services=services,
         events=events,
-        bibliography_path=bibliography_path,
+        bibliography_repository=services.bibliography.repository,
         backfill_policy=BackfillPolicy(
             initial_delay_seconds=settings.s2_backfill_initial_delay_seconds,
             idle_delay_seconds=settings.s2_backfill_idle_delay_seconds,
@@ -85,15 +83,14 @@ def build_app_runtime(
     runtime_definition = definition or DEFAULT_RUNTIME_DEFINITION
     jobs = [factory(runtime_resources) for factory in runtime_definition.jobs]
     contributors = [
-        factory(runtime_resources)
-        for factory in runtime_definition.health_contributors
+        factory(runtime_resources) for factory in runtime_definition.health_contributors
     ]
 
     return AppRuntime(
         services=services,
         health=SystemHealthService(
             contributors=contributors,
-            bibliography_path=bibliography_path,
+            bibliography_repository=services.bibliography.repository,
         ),
         supervisor=BackgroundSupervisor(jobs),
     )

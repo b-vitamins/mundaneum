@@ -23,7 +23,9 @@ MAX_LINES = {
 
 
 def _python_files() -> list[Path]:
-    return sorted(path for path in APP_ROOT.rglob("*.py") if "__pycache__" not in path.parts)
+    return sorted(
+        path for path in APP_ROOT.rglob("*.py") if "__pycache__" not in path.parts
+    )
 
 
 def _module_imports(path: Path) -> list[tuple[str, str]]:
@@ -60,6 +62,8 @@ def test_runtime_orchestrators_stay_small():
     for relative_path, max_lines in MAX_LINES.items():
         line_count = len((APP_ROOT.parent / relative_path).read_text().splitlines())
         if line_count > max_lines:
-            oversized.append(f"{relative_path} has {line_count} lines (limit {max_lines})")
+            oversized.append(
+                f"{relative_path} has {line_count} lines (limit {max_lines})"
+            )
 
     assert oversized == []

@@ -164,7 +164,9 @@ async def hydrate_selected_papers(
         for paper_id, paper in cached_papers.items()
         if paper_id in selected_ids
     }
-    missing_ids = [paper_id for paper_id in selected_ids if paper_id not in papers_by_id]
+    missing_ids = [
+        paper_id for paper_id in selected_ids if paper_id not in papers_by_id
+    ]
     if missing_ids:
         papers_by_id.update(await load_papers(source, missing_ids))
     return papers_by_id

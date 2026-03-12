@@ -4,2644 +4,2661 @@
  */
 
 export interface paths {
-    "/api/admin/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Export User State
-         * @description Export all user state (notes, read status, collections).
-         *
-         *     This data can be restored after a fresh ingest to recover user work.
-         */
-        get: operations["export_user_state_api_admin_export_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  "/api/admin/export": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/admin/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import User State
-         * @description Import user state from a backup.
-         *
-         *     Updates notes, read status, and recreates collections.
-         *     Entries must already exist (from ingest) - this only restores user state.
-         */
-        post: operations["import_user_state_api_admin_import_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Export User State
+     * @description Export all user state (notes, read status, collections).
+     *
+     *     This data can be restored after a fresh ingest to recover user work.
+     */
+    get: operations["export_user_state_api_admin_export_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/admin/ingest/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Ingest Status
-         * @description Get current ingestion worker status.
-         *
-         *     Returns progress information for background ingestion.
-         */
-        get: operations["get_ingest_status_api_admin_ingest_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Import User State
+     * @description Import user state from a backup.
+     *
+     *     Updates notes, read status, and recreates collections.
+     *     Entries must already exist (from ingest) - this only restores user state.
+     */
+    post: operations["import_user_state_api_admin_import_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/ingest/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/admin/ingest/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start Ingest
-         * @description Manually trigger background ingestion.
-         *
-         *     If already running, returns current status without restarting.
-         */
-        post: operations["start_ingest_api_admin_ingest_start_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Ingest Status
+     * @description Get current ingestion worker status.
+     *
+     *     Returns progress information for background ingestion.
+     */
+    get: operations["get_ingest_status_api_admin_ingest_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/ingest/start": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/admin/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Detailed Health
-         * @description Detailed health check for admin dashboard.
-         */
-        get: operations["detailed_health_api_admin_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Start Ingest
+     * @description Manually trigger background ingestion.
+     *
+     *     If already running, returns current status without restarting.
+     */
+    post: operations["start_ingest_api_admin_ingest_start_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/authors": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Authors
-         * @description List all authors with entry counts.
-         *
-         *     Supports sorting by name or entry_count.
-         */
-        get: operations["list_authors_api_authors_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Detailed Health
+     * @description Detailed health check for admin dashboard.
+     */
+    get: operations["detailed_health_api_admin_health_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/authors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/authors/{author_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Author
-         * @description Get author details by ID.
-         */
-        get: operations["get_author_api_authors__author_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Authors
+     * @description List all authors with entry counts.
+     *
+     *     Supports sorting by name or entry_count.
+     */
+    get: operations["list_authors_api_authors_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/authors/{author_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/authors/{author_id}/entries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Author Entries
-         * @description Get all entries by a specific author.
-         */
-        get: operations["get_author_entries_api_authors__author_id__entries_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Author
+     * @description Get author details by ID.
+     */
+    get: operations["get_author_api_authors__author_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/authors/{author_id}/entries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Entry Rows
-         * @description List entries with pagination and consistent serializer rules.
-         */
-        get: operations["list_entry_rows_api_entries_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Author Entries
+     * @description Get all entries by a specific author.
+     */
+    get: operations["get_author_entries_api_authors__author_id__entries_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Entry Detail
-         * @description Get a single entry and schedule background S2 hydration.
-         */
-        get: operations["get_entry_detail_api_entries__entry_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Entry Rows
+     * @description List entries with pagination and consistent serializer rules.
+     */
+    get: operations["list_entry_rows_api_entries_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries/{entry_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Toggle Read
-         * @description Toggle read status of an entry.
-         */
-        patch: operations["toggle_read_api_entries__entry_id__read_patch"];
-        trace?: never;
+    /**
+     * Get Entry Detail
+     * @description Get a single entry and schedule background S2 hydration.
+     */
+    get: operations["get_entry_detail_api_entries__entry_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update Notes
-         * @description Update notes for an entry.
-         */
-        patch: operations["update_notes_api_entries__entry_id__notes_patch"];
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Toggle Read
+     * @description Toggle read status of an entry.
+     */
+    patch: operations["toggle_read_api_entries__entry_id__read_patch"];
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/notes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/bibtex": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Bibtex
-         * @description Export entry as BibTeX.
-         */
-        get: operations["get_bibtex_api_entries__entry_id__bibtex_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update Notes
+     * @description Update notes for an entry.
+     */
+    patch: operations["update_notes_api_entries__entry_id__notes_patch"];
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/bibtex": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/pdf": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Pdf
-         * @description Serve the PDF associated with an entry.
-         */
-        get: operations["get_pdf_api_entries__entry_id__pdf_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Bibtex
+     * @description Export entry as BibTeX.
+     */
+    get: operations["get_bibtex_api_entries__entry_id__bibtex_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/pdf": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/s2": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Entry S2
-         * @description Get S2 metadata and sync status for an entry.
-         */
-        get: operations["get_entry_s2_api_entries__entry_id__s2_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Pdf
+     * @description Serve the PDF associated with an entry.
+     */
+    get: operations["get_pdf_api_entries__entry_id__pdf_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/s2": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/citations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Citations
-         * @description Get citations (incoming edges) for an entry.
-         */
-        get: operations["get_citations_api_entries__entry_id__citations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Entry S2
+     * @description Get S2 metadata and sync status for an entry.
+     */
+    get: operations["get_entry_s2_api_entries__entry_id__s2_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/citations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/entries/{entry_id}/references": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get References
-         * @description Get references (outgoing edges) for an entry.
-         */
-        get: operations["get_references_api_entries__entry_id__references_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Citations
+     * @description Get citations (incoming edges) for an entry.
+     */
+    get: operations["get_citations_api_entries__entry_id__citations_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/entries/{entry_id}/references": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/graph/{entry_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Graph
-         * @description Get the citation subgraph centered on a library entry.
-         *
-         *     DuckDB-first: builds graph instantly from local corpus data.
-         *     API sync runs in the background for future benefit.
-         */
-        get: operations["get_graph_api_graph__entry_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get References
+     * @description Get references (outgoing edges) for an entry.
+     */
+    get: operations["get_references_api_entries__entry_id__references_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/graph/{entry_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/collections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Collections
-         * @description List all collections.
-         */
-        get: operations["list_collections_api_collections_get"];
-        put?: never;
-        /**
-         * Create Collection
-         * @description Create a new collection.
-         */
-        post: operations["create_collection_api_collections_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Graph
+     * @description Get the citation subgraph centered on a library entry.
+     *
+     *     DuckDB-first: builds graph instantly from local corpus data.
+     *     API sync runs in the background for future benefit.
+     */
+    get: operations["get_graph_api_graph__entry_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/collections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/collections/{collection_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Collection
-         * @description Get collection with its entries.
-         */
-        get: operations["get_collection_api_collections__collection_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Collection
-         * @description Delete a collection.
-         */
-        delete: operations["delete_collection_api_collections__collection_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Collections
+     * @description List all collections.
+     */
+    get: operations["list_collections_api_collections_get"];
+    put?: never;
+    /**
+     * Create Collection
+     * @description Create a new collection.
+     */
+    post: operations["create_collection_api_collections_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/collections/{collection_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/collections/{collection_id}/entries/{entry_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Add Entry To Collection
-         * @description Add an entry to a collection.
-         */
-        post: operations["add_entry_to_collection_api_collections__collection_id__entries__entry_id__post"];
-        /**
-         * Remove Entry From Collection
-         * @description Remove an entry from a collection.
-         */
-        delete: operations["remove_entry_from_collection_api_collections__collection_id__entries__entry_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Collection
+     * @description Get collection with its entries.
+     */
+    get: operations["get_collection_api_collections__collection_id__get"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Collection
+     * @description Delete a collection.
+     */
+    delete: operations["delete_collection_api_collections__collection_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/collections/{collection_id}/entries/{entry_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/ingest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import Bibtex
-         * @description Import BibTeX files from a directory.
-         *
-         *     If directory is not specified, uses the configured default.
-         */
-        post: operations["import_bibtex_api_ingest_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Add Entry To Collection
+     * @description Add an entry to a collection.
+     */
+    post: operations["add_entry_to_collection_api_collections__collection_id__entries__entry_id__post"];
+    /**
+     * Remove Entry From Collection
+     * @description Remove an entry from a collection.
+     */
+    delete: operations["remove_entry_from_collection_api_collections__collection_id__entries__entry_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/ingest": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Search Entries
-         * @description Search entries with explicit degradation handling.
-         */
-        get: operations["search_entries_api_search_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Import Bibtex
+     * @description Import BibTeX files from a directory.
+     *
+     *     If directory is not specified, uses the configured default.
+     */
+    post: operations["import_bibtex_api_ingest_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/venues": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Venues
-         * @description List all venues with entry counts.
-         */
-        get: operations["list_venues_api_venues_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Search Entries
+     * @description Search entries with explicit degradation handling.
+     */
+    get: operations["search_entries_api_search_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/venues": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/venues/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Venue
-         * @description Get venue details by slug.
-         */
-        get: operations["get_venue_api_venues__slug__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Venues
+     * @description List all venues with entry counts.
+     */
+    get: operations["list_venues_api_venues_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/venues/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/venues/{slug}/entries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Venue Entries
-         * @description Get all entries in a specific venue.
-         */
-        get: operations["get_venue_entries_api_venues__slug__entries_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Venue
+     * @description Get venue details by slug.
+     */
+    get: operations["get_venue_api_venues__slug__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/venues/{slug}/entries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/subjects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Subjects
-         * @description List all subjects with entry counts.
-         */
-        get: operations["list_subjects_api_subjects_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Venue Entries
+     * @description Get all entries in a specific venue.
+     */
+    get: operations["get_venue_entries_api_venues__slug__entries_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/subjects": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/subjects/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Subject
-         * @description Get subject details by slug.
-         */
-        get: operations["get_subject_api_subjects__slug__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Subjects
+     * @description List all subjects with entry counts.
+     */
+    get: operations["list_subjects_api_subjects_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/subjects/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/subjects/{slug}/entries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Subject Entries
-         * @description Get all entries in a specific subject.
-         */
-        get: operations["get_subject_entries_api_subjects__slug__entries_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Subject
+     * @description Get subject details by slug.
+     */
+    get: operations["get_subject_api_subjects__slug__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/subjects/{slug}/entries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/topics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Topics
-         * @description List all topics with entry counts.
-         */
-        get: operations["list_topics_api_topics_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Subject Entries
+     * @description Get all entries in a specific subject.
+     */
+    get: operations["get_subject_entries_api_subjects__slug__entries_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/topics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/topics/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Topic
-         * @description Get topic details by slug.
-         */
-        get: operations["get_topic_api_topics__slug__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Topics
+     * @description List all topics with entry counts.
+     */
+    get: operations["list_topics_api_topics_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/topics/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/topics/{slug}/entries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Topic Entries
-         * @description Get all entries in a specific topic.
-         */
-        get: operations["get_topic_entries_api_topics__slug__entries_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Topic
+     * @description Get topic details by slug.
+     */
+    get: operations["get_topic_api_topics__slug__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/topics/{slug}/entries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health
-         * @description Health check endpoint.
-         */
-        get: operations["health_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get Topic Entries
+     * @description Get all entries in a specific topic.
+     */
+    get: operations["get_topic_entries_api_topics__slug__entries_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Stats
-         * @description Get library statistics.
-         */
-        get: operations["stats_api_stats_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Health
+     * @description Health check endpoint.
+     */
+    get: operations["health_health_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/stats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    /**
+     * Stats
+     * @description Get library statistics.
+     */
+    get: operations["stats_api_stats_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /** AggregateEntryResponse */
-        AggregateEntryResponse: {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Venue */
-            venue?: string | null;
-            /**
-             * Authors
-             * @default []
-             */
-            authors: string[];
-            /**
-             * Citation Count
-             * @default 0
-             */
-            citation_count: number;
-            /**
-             * Frequency
-             * @default 0
-             */
-            frequency: number;
-            /**
-             * In Library
-             * @default false
-             */
-            in_library: boolean;
-            /** Entry Id */
-            entry_id?: string | null;
-        };
-        /** AuthorDetail */
-        AuthorDetail: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /** AuthorEntryItem */
-        AuthorEntryItem: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year: number | null;
-            /** Venue */
-            venue: string | null;
-            /** Read */
-            read: boolean;
-        };
-        /** AuthorListItem */
-        AuthorListItem: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /**
-         * CollectionCreate
-         * @description Request model for creating a collection.
-         */
-        CollectionCreate: {
-            /** Name */
-            name: string;
-        };
-        /**
-         * CollectionDetailResponse
-         * @description Response model for collection detail view.
-         */
-        CollectionDetailResponse: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-            /** Description */
-            description?: string | null;
-            /** Entries */
-            entries: components["schemas"]["CollectionEntryItem"][];
-        };
-        /**
-         * CollectionEntryItem
-         * @description Response model for entries in a collection.
-         */
-        CollectionEntryItem: {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Sort Order */
-            sort_order: number;
-        };
-        /**
-         * CollectionResponse
-         * @description Response model for collection list items.
-         */
-        CollectionResponse: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /**
-         * EntryDetailResponse
-         * @description Response model for entry detail view.
-         */
-        EntryDetailResponse: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Authors */
-            authors: string[];
-            /** Venue */
-            venue?: string | null;
-            /** Abstract */
-            abstract?: string | null;
-            /** File Path */
-            file_path?: string | null;
-            /**
-             * Read
-             * @default false
-             */
-            read: boolean;
-            /** Required Fields */
-            required_fields: {
-                [key: string]: unknown;
-            };
-            /** Optional Fields */
-            optional_fields: {
-                [key: string]: unknown;
-            };
-            /** Notes */
-            notes?: string | null;
-            /** Source File */
-            source_file: string;
-        };
-        /**
-         * EntryResponse
-         * @description Response model for entry list items.
-         */
-        EntryResponse: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Authors */
-            authors: string[];
-            /** Venue */
-            venue?: string | null;
-            /** Abstract */
-            abstract?: string | null;
-            /** File Path */
-            file_path?: string | null;
-            /**
-             * Read
-             * @default false
-             */
-            read: boolean;
-        };
-        /**
-         * EntryType
-         * @description BibTeX entry types per official specification.
-         * @enum {string}
-         */
-        EntryType: "article" | "book" | "booklet" | "inbook" | "incollection" | "inproceedings" | "manual" | "mastersthesis" | "misc" | "phdthesis" | "proceedings" | "techreport" | "unpublished";
-        /**
-         * ExportData
-         * @description Complete backup structure.
-         */
-        ExportData: {
-            /**
-             * Version
-             * @default 1.0
-             */
-            version: string;
-            /** Exported At */
-            exported_at: string;
-            /** Entries */
-            entries: components["schemas"]["ExportedEntry"][];
-            /** Collections */
-            collections: components["schemas"]["ExportedCollection"][];
-        };
-        /**
-         * ExportedCollection
-         * @description Exported collection with entry citation keys.
-         */
-        ExportedCollection: {
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /**
-             * Sort Order
-             * @default 0
-             */
-            sort_order: number;
-            /** Entry Keys */
-            entry_keys: string[];
-        };
-        /**
-         * ExportedEntry
-         * @description Exported entry user state.
-         */
-        ExportedEntry: {
-            /** Citation Key */
-            citation_key: string;
-            /** Notes */
-            notes?: string | null;
-            /**
-             * Read
-             * @default false
-             */
-            read: boolean;
-        };
-        /** GraphEdgeResponse */
-        GraphEdgeResponse: {
-            /** Source */
-            source: string;
-            /** Target */
-            target: string;
-            /**
-             * Is Influential
-             * @default false
-             */
-            is_influential: boolean;
-        };
-        /** GraphNodeResponse */
-        GraphNodeResponse: {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Venue */
-            venue?: string | null;
-            /**
-             * Authors
-             * @default []
-             */
-            authors: string[];
-            /**
-             * Citation Count
-             * @default 0
-             */
-            citation_count: number;
-            /**
-             * Fields Of Study
-             * @default []
-             */
-            fields_of_study: string[];
-            /**
-             * In Library
-             * @default false
-             */
-            in_library: boolean;
-            /** Entry Id */
-            entry_id?: string | null;
-        };
-        /** GraphResponse */
-        GraphResponse: {
-            /** Center Id */
-            center_id: string;
-            /**
-             * Nodes
-             * @default []
-             */
-            nodes: components["schemas"]["GraphNodeResponse"][];
-            /**
-             * Edges
-             * @default []
-             */
-            edges: components["schemas"]["GraphEdgeResponse"][];
-            /**
-             * Prior Works
-             * @default []
-             */
-            prior_works: components["schemas"]["AggregateEntryResponse"][];
-            /**
-             * Derivative Works
-             * @default []
-             */
-            derivative_works: components["schemas"]["AggregateEntryResponse"][];
-            /**
-             * Similarity Edges
-             * @default []
-             */
-            similarity_edges: components["schemas"]["SimilarityEdgeResponse"][];
-        };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /**
-         * HealthResponse
-         * @description Detailed health status for admin views.
-         */
-        HealthResponse: {
-            /** Status */
-            status: string;
-            /** Database */
-            database: string;
-            /** Search */
-            search: string;
-            /** Bib Directory */
-            bib_directory: string;
-            /** Bib Files Count */
-            bib_files_count: number;
-        };
-        /**
-         * ImportRequest
-         * @description Request model for BibTeX import.
-         */
-        ImportRequest: {
-            /** Directory */
-            directory?: string | null;
-        };
-        /**
-         * ImportResponse
-         * @description Response model for import results.
-         */
-        ImportResponse: {
-            /** Imported */
-            imported: number;
-            /** Errors */
-            errors: number;
-            /** Total Parsed */
-            total_parsed: number;
-        };
-        /**
-         * ImportResult
-         * @description Result of importing user state.
-         */
-        ImportResult: {
-            /** Entries Updated */
-            entries_updated: number;
-            /** Entries Skipped */
-            entries_skipped: number;
-            /** Collections Created */
-            collections_created: number;
-            /** Collections Updated */
-            collections_updated: number;
-            /** Errors */
-            errors: string[];
-        };
-        /**
-         * IngestRequest
-         * @description Request for triggering ingest.
-         */
-        IngestRequest: {
-            /** Directory */
-            directory?: string | null;
-        };
-        /**
-         * NotesRequest
-         * @description Request model for updating notes.
-         */
-        NotesRequest: {
-            /** Notes */
-            notes: string;
-        };
-        /**
-         * NotesResponse
-         * @description Response for notes update.
-         */
-        NotesResponse: {
-            /** Id */
-            id: string;
-            /** Notes */
-            notes: string;
-        };
-        /**
-         * ReadRequest
-         * @description Request model for updating read status.
-         */
-        ReadRequest: {
-            /** Read */
-            read: boolean;
-        };
-        /**
-         * ReadResponse
-         * @description Response for read status update.
-         */
-        ReadResponse: {
-            /** Id */
-            id: string;
-            /** Read */
-            read: boolean;
-        };
-        /**
-         * S2MetaResponse
-         * @description S2 metadata with sync status for progressive loading.
-         */
-        S2MetaResponse: {
-            /** Sync Status */
-            sync_status: string;
-            /** S2 Id */
-            s2_id?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Abstract */
-            abstract?: string | null;
-            /** Tldr */
-            tldr?: string | null;
-            /** Citation Count */
-            citation_count?: number | null;
-            /** Reference Count */
-            reference_count?: number | null;
-            /** Influential Citation Count */
-            influential_citation_count?: number | null;
-            /**
-             * Fields Of Study
-             * @default []
-             */
-            fields_of_study: string[];
-            /**
-             * Publication Types
-             * @default []
-             */
-            publication_types: string[];
-            /**
-             * Is Open Access
-             * @default false
-             */
-            is_open_access: boolean;
-            /** Open Access Pdf Url */
-            open_access_pdf_url?: string | null;
-            /**
-             * External Ids
-             * @default {}
-             */
-            external_ids: {
-                [key: string]: unknown;
-            };
-            /** S2 Url */
-            s2_url?: string | null;
-        };
-        /** S2PaperResponse */
-        S2PaperResponse: {
-            /** S2 Id */
-            s2_id: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Venue */
-            venue?: string | null;
-            /** Authors */
-            authors: {
-                [key: string]: unknown;
-            }[];
-            /** Abstract */
-            abstract?: string | null;
-            /** Tldr */
-            tldr?: {
-                [key: string]: unknown;
-            } | null;
-            /** Citation Count */
-            citation_count: number;
-            /**
-             * Is Influential
-             * @default false
-             */
-            is_influential: boolean;
-            /**
-             * Contexts
-             * @default []
-             */
-            contexts: string[];
-            /**
-             * Intents
-             * @default []
-             */
-            intents: string[];
-        };
-        /**
-         * SearchHitResponse
-         * @description Typed search hit payload.
-         */
-        SearchHitResponse: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year?: number | null;
-            /** Authors */
-            authors: string[];
-            /** Venue */
-            venue?: string | null;
-            /** Abstract */
-            abstract?: string | null;
-            /**
-             * Has Pdf
-             * @default false
-             */
-            has_pdf: boolean;
-            /**
-             * Read
-             * @default false
-             */
-            read: boolean;
-        };
-        /**
-         * SearchResponse
-         * @description Typed search response with explicit degradation state.
-         */
-        SearchResponse: {
-            status: components["schemas"]["SearchStatus"];
-            source: components["schemas"]["SearchSource"];
-            /** Hits */
-            hits: components["schemas"]["SearchHitResponse"][];
-            /** Total */
-            total: number;
-            /** Processing Time Ms */
-            processing_time_ms: number;
-            /** Warnings */
-            warnings?: components["schemas"]["SearchWarning"][];
-        };
-        /**
-         * SearchSource
-         * @description Source that produced the search response.
-         * @enum {string}
-         */
-        SearchSource: "meilisearch" | "database" | "none";
-        /**
-         * SearchStatus
-         * @description Execution status for a search request.
-         * @enum {string}
-         */
-        SearchStatus: "ok" | "partial" | "unavailable";
-        /**
-         * SearchWarning
-         * @description Structured search degradation metadata.
-         */
-        SearchWarning: {
-            code: components["schemas"]["SearchWarningCode"];
-            /** Message */
-            message: string;
-        };
-        /**
-         * SearchWarningCode
-         * @description Supported structured search warnings.
-         * @enum {string}
-         */
-        SearchWarningCode: "meilisearch_unavailable" | "search_unavailable";
-        /** SimilarityEdgeResponse */
-        SimilarityEdgeResponse: {
-            /** Source */
-            source: string;
-            /** Target */
-            target: string;
-            /** Weight */
-            weight: number;
-        };
-        /**
-         * StatsResponse
-         * @description Library statistics response model.
-         */
-        StatsResponse: {
-            /** Entries */
-            entries: number;
-            /** Authors */
-            authors: number;
-            /** Collections */
-            collections: number;
-        };
-        /** SubjectDetail */
-        SubjectDetail: {
-            /** Id */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /** SubjectEntryItem */
-        SubjectEntryItem: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year: number | null;
-            /** Authors */
-            authors: string[];
-            /** Venue */
-            venue: string | null;
-            /** Read */
-            read: boolean;
-        };
-        /** SubjectListItem */
-        SubjectListItem: {
-            /** Id */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Parent Slug */
-            parent_slug?: string | null;
-            /** Display Name */
-            display_name?: string | null;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /** TopicDetail */
-        TopicDetail: {
-            /** Id */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /** TopicEntryItem */
-        TopicEntryItem: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year: number | null;
-            /** Authors */
-            authors: string[];
-            /** Venue */
-            venue: string | null;
-            /** Read */
-            read: boolean;
-        };
-        /** TopicListItem */
-        TopicListItem: {
-            /** Id */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-        };
-        /**
-         * VenueCategory
-         * @enum {string}
-         */
-        VenueCategory: "CONFERENCE" | "JOURNAL";
-        /** VenueDetail */
-        VenueDetail: {
-            /** Id */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Category */
-            category: string;
-            /** Aliases */
-            aliases: string[];
-            /** Url */
-            url: string | null;
-            /** Entry Count */
-            entry_count: number;
-        };
-        /** VenueEntryItem */
-        VenueEntryItem: {
-            /** Id */
-            id: string;
-            /** Citation Key */
-            citation_key: string;
-            /** Entry Type */
-            entry_type: string;
-            /** Title */
-            title: string;
-            /** Year */
-            year: number | null;
-            /** Authors */
-            authors: string[];
-            /** Read */
-            read: boolean;
-        };
-        /** VenueListItem */
-        VenueListItem: {
-            /** Id */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Category */
-            category: string;
-            /** Entry Count */
-            entry_count: number;
-        };
+  schemas: {
+    /** AggregateEntryResponse */
+    AggregateEntryResponse: {
+      /** Id */
+      id: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Venue */
+      venue?: string | null;
+      /**
+       * Authors
+       * @default []
+       */
+      authors: string[];
+      /**
+       * Citation Count
+       * @default 0
+       */
+      citation_count: number;
+      /**
+       * Frequency
+       * @default 0
+       */
+      frequency: number;
+      /**
+       * In Library
+       * @default false
+       */
+      in_library: boolean;
+      /** Entry Id */
+      entry_id?: string | null;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    /** AuthorDetail */
+    AuthorDetail: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /** AuthorEntryItem */
+    AuthorEntryItem: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year: number | null;
+      /** Venue */
+      venue: string | null;
+      /** Read */
+      read: boolean;
+    };
+    /** AuthorListItem */
+    AuthorListItem: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /**
+     * CollectionCreate
+     * @description Request model for creating a collection.
+     */
+    CollectionCreate: {
+      /** Name */
+      name: string;
+    };
+    /**
+     * CollectionDetailResponse
+     * @description Response model for collection detail view.
+     */
+    CollectionDetailResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+      /** Description */
+      description?: string | null;
+      /** Entries */
+      entries: components["schemas"]["CollectionEntryItem"][];
+    };
+    /**
+     * CollectionEntryItem
+     * @description Response model for entries in a collection.
+     */
+    CollectionEntryItem: {
+      /** Id */
+      id: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Sort Order */
+      sort_order: number;
+    };
+    /**
+     * CollectionResponse
+     * @description Response model for collection list items.
+     */
+    CollectionResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /**
+     * EntryDetailResponse
+     * @description Response model for entry detail view.
+     */
+    EntryDetailResponse: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Authors */
+      authors: string[];
+      /** Venue */
+      venue?: string | null;
+      /** Abstract */
+      abstract?: string | null;
+      /** File Path */
+      file_path?: string | null;
+      /**
+       * Read
+       * @default false
+       */
+      read: boolean;
+      /** Required Fields */
+      required_fields: {
+        [key: string]: unknown;
+      };
+      /** Optional Fields */
+      optional_fields: {
+        [key: string]: unknown;
+      };
+      /** Notes */
+      notes?: string | null;
+      /** Source File */
+      source_file: string;
+    };
+    /**
+     * EntryResponse
+     * @description Response model for entry list items.
+     */
+    EntryResponse: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Authors */
+      authors: string[];
+      /** Venue */
+      venue?: string | null;
+      /** Abstract */
+      abstract?: string | null;
+      /** File Path */
+      file_path?: string | null;
+      /**
+       * Read
+       * @default false
+       */
+      read: boolean;
+    };
+    /**
+     * EntryType
+     * @description BibTeX entry types per official specification.
+     * @enum {string}
+     */
+    EntryType:
+      | "article"
+      | "book"
+      | "booklet"
+      | "inbook"
+      | "incollection"
+      | "inproceedings"
+      | "manual"
+      | "mastersthesis"
+      | "misc"
+      | "phdthesis"
+      | "proceedings"
+      | "techreport"
+      | "unpublished";
+    /**
+     * ExportData
+     * @description Complete backup structure.
+     */
+    ExportData: {
+      /**
+       * Version
+       * @default 1.0
+       */
+      version: string;
+      /** Exported At */
+      exported_at: string;
+      /** Entries */
+      entries: components["schemas"]["ExportedEntry"][];
+      /** Collections */
+      collections: components["schemas"]["ExportedCollection"][];
+    };
+    /**
+     * ExportedCollection
+     * @description Exported collection with entry citation keys.
+     */
+    ExportedCollection: {
+      /** Name */
+      name: string;
+      /** Description */
+      description?: string | null;
+      /**
+       * Sort Order
+       * @default 0
+       */
+      sort_order: number;
+      /** Entry Keys */
+      entry_keys: string[];
+    };
+    /**
+     * ExportedEntry
+     * @description Exported entry user state.
+     */
+    ExportedEntry: {
+      /** Citation Key */
+      citation_key: string;
+      /** Notes */
+      notes?: string | null;
+      /**
+       * Read
+       * @default false
+       */
+      read: boolean;
+    };
+    /** GraphEdgeResponse */
+    GraphEdgeResponse: {
+      /** Source */
+      source: string;
+      /** Target */
+      target: string;
+      /**
+       * Is Influential
+       * @default false
+       */
+      is_influential: boolean;
+    };
+    /** GraphNodeResponse */
+    GraphNodeResponse: {
+      /** Id */
+      id: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Venue */
+      venue?: string | null;
+      /**
+       * Authors
+       * @default []
+       */
+      authors: string[];
+      /**
+       * Citation Count
+       * @default 0
+       */
+      citation_count: number;
+      /**
+       * Fields Of Study
+       * @default []
+       */
+      fields_of_study: string[];
+      /**
+       * In Library
+       * @default false
+       */
+      in_library: boolean;
+      /** Entry Id */
+      entry_id?: string | null;
+    };
+    /** GraphResponse */
+    GraphResponse: {
+      /** Center Id */
+      center_id: string;
+      /**
+       * Nodes
+       * @default []
+       */
+      nodes: components["schemas"]["GraphNodeResponse"][];
+      /**
+       * Edges
+       * @default []
+       */
+      edges: components["schemas"]["GraphEdgeResponse"][];
+      /**
+       * Prior Works
+       * @default []
+       */
+      prior_works: components["schemas"]["AggregateEntryResponse"][];
+      /**
+       * Derivative Works
+       * @default []
+       */
+      derivative_works: components["schemas"]["AggregateEntryResponse"][];
+      /**
+       * Similarity Edges
+       * @default []
+       */
+      similarity_edges: components["schemas"]["SimilarityEdgeResponse"][];
+    };
+    /** HTTPValidationError */
+    HTTPValidationError: {
+      /** Detail */
+      detail?: components["schemas"]["ValidationError"][];
+    };
+    /**
+     * HealthResponse
+     * @description Detailed health status for admin views.
+     */
+    HealthResponse: {
+      /** Status */
+      status: string;
+      /** Database */
+      database: string;
+      /** Search */
+      search: string;
+      /** Bibliography */
+      bibliography: string;
+      /** Bibliography Repo Url */
+      bibliography_repo_url: string;
+      /** Bibliography Checkout Path */
+      bibliography_checkout_path: string;
+      /** Bib Files Count */
+      bib_files_count: number;
+    };
+    /**
+     * ImportRequest
+     * @description Request model for BibTeX import.
+     */
+    ImportRequest: {
+      /** Directory */
+      directory?: string | null;
+    };
+    /**
+     * ImportResponse
+     * @description Response model for import results.
+     */
+    ImportResponse: {
+      /** Imported */
+      imported: number;
+      /** Errors */
+      errors: number;
+      /** Total Parsed */
+      total_parsed: number;
+    };
+    /**
+     * ImportResult
+     * @description Result of importing user state.
+     */
+    ImportResult: {
+      /** Entries Updated */
+      entries_updated: number;
+      /** Entries Skipped */
+      entries_skipped: number;
+      /** Collections Created */
+      collections_created: number;
+      /** Collections Updated */
+      collections_updated: number;
+      /** Errors */
+      errors: string[];
+    };
+    /**
+     * IngestRequest
+     * @description Request for triggering ingest.
+     */
+    IngestRequest: {
+      /** Directory */
+      directory?: string | null;
+    };
+    /**
+     * NotesRequest
+     * @description Request model for updating notes.
+     */
+    NotesRequest: {
+      /** Notes */
+      notes: string;
+    };
+    /**
+     * NotesResponse
+     * @description Response for notes update.
+     */
+    NotesResponse: {
+      /** Id */
+      id: string;
+      /** Notes */
+      notes: string;
+    };
+    /**
+     * ReadRequest
+     * @description Request model for updating read status.
+     */
+    ReadRequest: {
+      /** Read */
+      read: boolean;
+    };
+    /**
+     * ReadResponse
+     * @description Response for read status update.
+     */
+    ReadResponse: {
+      /** Id */
+      id: string;
+      /** Read */
+      read: boolean;
+    };
+    /**
+     * S2MetaResponse
+     * @description S2 metadata with sync status for progressive loading.
+     */
+    S2MetaResponse: {
+      /** Sync Status */
+      sync_status: string;
+      /** S2 Id */
+      s2_id?: string | null;
+      /** Title */
+      title?: string | null;
+      /** Abstract */
+      abstract?: string | null;
+      /** Tldr */
+      tldr?: string | null;
+      /** Citation Count */
+      citation_count?: number | null;
+      /** Reference Count */
+      reference_count?: number | null;
+      /** Influential Citation Count */
+      influential_citation_count?: number | null;
+      /**
+       * Fields Of Study
+       * @default []
+       */
+      fields_of_study: string[];
+      /**
+       * Publication Types
+       * @default []
+       */
+      publication_types: string[];
+      /**
+       * Is Open Access
+       * @default false
+       */
+      is_open_access: boolean;
+      /** Open Access Pdf Url */
+      open_access_pdf_url?: string | null;
+      /**
+       * External Ids
+       * @default {}
+       */
+      external_ids: {
+        [key: string]: unknown;
+      };
+      /** S2 Url */
+      s2_url?: string | null;
+    };
+    /** S2PaperResponse */
+    S2PaperResponse: {
+      /** S2 Id */
+      s2_id: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Venue */
+      venue?: string | null;
+      /** Authors */
+      authors: {
+        [key: string]: unknown;
+      }[];
+      /** Abstract */
+      abstract?: string | null;
+      /** Tldr */
+      tldr?: {
+        [key: string]: unknown;
+      } | null;
+      /** Citation Count */
+      citation_count: number;
+      /**
+       * Is Influential
+       * @default false
+       */
+      is_influential: boolean;
+      /**
+       * Contexts
+       * @default []
+       */
+      contexts: string[];
+      /**
+       * Intents
+       * @default []
+       */
+      intents: string[];
+    };
+    /**
+     * SearchHitResponse
+     * @description Typed search hit payload.
+     */
+    SearchHitResponse: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year?: number | null;
+      /** Authors */
+      authors: string[];
+      /** Venue */
+      venue?: string | null;
+      /** Abstract */
+      abstract?: string | null;
+      /**
+       * Has Pdf
+       * @default false
+       */
+      has_pdf: boolean;
+      /**
+       * Read
+       * @default false
+       */
+      read: boolean;
+    };
+    /**
+     * SearchResponse
+     * @description Typed search response with explicit degradation state.
+     */
+    SearchResponse: {
+      status: components["schemas"]["SearchStatus"];
+      source: components["schemas"]["SearchSource"];
+      /** Hits */
+      hits: components["schemas"]["SearchHitResponse"][];
+      /** Total */
+      total: number;
+      /** Processing Time Ms */
+      processing_time_ms: number;
+      /** Warnings */
+      warnings?: components["schemas"]["SearchWarning"][];
+    };
+    /**
+     * SearchSource
+     * @description Source that produced the search response.
+     * @enum {string}
+     */
+    SearchSource: "meilisearch" | "database" | "none";
+    /**
+     * SearchStatus
+     * @description Execution status for a search request.
+     * @enum {string}
+     */
+    SearchStatus: "ok" | "partial" | "unavailable";
+    /**
+     * SearchWarning
+     * @description Structured search degradation metadata.
+     */
+    SearchWarning: {
+      code: components["schemas"]["SearchWarningCode"];
+      /** Message */
+      message: string;
+    };
+    /**
+     * SearchWarningCode
+     * @description Supported structured search warnings.
+     * @enum {string}
+     */
+    SearchWarningCode: "meilisearch_unavailable" | "search_unavailable";
+    /** SimilarityEdgeResponse */
+    SimilarityEdgeResponse: {
+      /** Source */
+      source: string;
+      /** Target */
+      target: string;
+      /** Weight */
+      weight: number;
+    };
+    /**
+     * StatsResponse
+     * @description Library statistics response model.
+     */
+    StatsResponse: {
+      /** Entries */
+      entries: number;
+      /** Authors */
+      authors: number;
+      /** Collections */
+      collections: number;
+    };
+    /** SubjectDetail */
+    SubjectDetail: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /** SubjectEntryItem */
+    SubjectEntryItem: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year: number | null;
+      /** Authors */
+      authors: string[];
+      /** Venue */
+      venue: string | null;
+      /** Read */
+      read: boolean;
+    };
+    /** SubjectListItem */
+    SubjectListItem: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Parent Slug */
+      parent_slug?: string | null;
+      /** Display Name */
+      display_name?: string | null;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /** TopicDetail */
+    TopicDetail: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /** TopicEntryItem */
+    TopicEntryItem: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year: number | null;
+      /** Authors */
+      authors: string[];
+      /** Venue */
+      venue: string | null;
+      /** Read */
+      read: boolean;
+    };
+    /** TopicListItem */
+    TopicListItem: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /** ValidationError */
+    ValidationError: {
+      /** Location */
+      loc: (string | number)[];
+      /** Message */
+      msg: string;
+      /** Error Type */
+      type: string;
+    };
+    /**
+     * VenueCategory
+     * @enum {string}
+     */
+    VenueCategory: "CONFERENCE" | "JOURNAL";
+    /** VenueDetail */
+    VenueDetail: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Category */
+      category: string;
+      /** Aliases */
+      aliases: string[];
+      /** Url */
+      url: string | null;
+      /** Entry Count */
+      entry_count: number;
+    };
+    /** VenueEntryItem */
+    VenueEntryItem: {
+      /** Id */
+      id: string;
+      /** Citation Key */
+      citation_key: string;
+      /** Entry Type */
+      entry_type: string;
+      /** Title */
+      title: string;
+      /** Year */
+      year: number | null;
+      /** Authors */
+      authors: string[];
+      /** Read */
+      read: boolean;
+    };
+    /** VenueListItem */
+    VenueListItem: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Category */
+      category: string;
+      /** Entry Count */
+      entry_count: number;
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    export_user_state_api_admin_export_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExportData"];
-                };
-            };
-        };
+  export_user_state_api_admin_export_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    import_user_state_api_admin_import_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ExportData"];
-            };
+        content: {
+          "application/json": components["schemas"]["ExportData"];
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+      };
     };
-    get_ingest_status_api_admin_ingest_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
+  };
+  import_user_state_api_admin_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    start_ingest_api_admin_ingest_start_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IngestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExportData"];
+      };
     };
-    detailed_health_api_admin_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["ImportResult"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    list_authors_api_authors_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthorListItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_ingest_status_api_admin_ingest_status_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    get_author_api_authors__author_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                author_id: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthorDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": unknown;
         };
+      };
     };
-    get_author_entries_api_authors__author_id__entries_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path: {
-                author_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthorEntryItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  start_ingest_api_admin_ingest_start_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    list_entry_rows_api_entries_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EntryResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["IngestRequest"];
+      };
     };
-    get_entry_detail_api_entries__entry_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EntryDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": unknown;
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    toggle_read_api_entries__entry_id__read_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReadRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReadResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  detailed_health_api_admin_health_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    update_notes_api_entries__entry_id__notes_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NotesRequest"];
-            };
+        content: {
+          "application/json": components["schemas"]["HealthResponse"];
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+      };
     };
-    get_bibtex_api_entries__entry_id__bibtex_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/plain": string;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  list_authors_api_authors_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    get_pdf_api_entries__entry_id__pdf_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["AuthorListItem"][];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    get_entry_s2_api_entries__entry_id__s2_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["S2MetaResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_author_api_authors__author_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        author_id: string;
+      };
+      cookie?: never;
     };
-    get_citations_api_entries__entry_id__citations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["S2PaperResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["AuthorDetail"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    get_references_api_entries__entry_id__references_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["S2PaperResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_author_entries_api_authors__author_id__entries_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path: {
+        author_id: string;
+      };
+      cookie?: never;
     };
-    get_graph_api_graph__entry_id__get: {
-        parameters: {
-            query?: {
-                /** @description Hops to expand (1 or 2) */
-                depth?: number;
-                /** @description Max nodes to return */
-                max_nodes?: number;
-            };
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GraphResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["AuthorEntryItem"][];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    list_collections_api_collections_get: {
-        parameters: {
-            query?: {
-                /** @description Maximum results */
-                limit?: number;
-                /** @description Results offset */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CollectionResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  list_entry_rows_api_entries_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    create_collection_api_collections_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CollectionCreate"];
-            };
+        content: {
+          "application/json": components["schemas"]["EntryResponse"][];
         };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CollectionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    get_collection_api_collections__collection_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CollectionDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_entry_detail_api_entries__entry_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    delete_collection_api_collections__collection_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["EntryDetailResponse"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    add_entry_to_collection_api_collections__collection_id__entries__entry_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  toggle_read_api_entries__entry_id__read_patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    remove_entry_from_collection_api_collections__collection_id__entries__entry_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadRequest"];
+      };
     };
-    import_bibtex_api_ingest_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImportRequest"];
-            };
+        content: {
+          "application/json": components["schemas"]["ReadResponse"];
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    search_entries_api_search_get: {
-        parameters: {
-            query?: {
-                /** @description Search query */
-                q?: string | null;
-                /** @description Filter by entry type */
-                entry_type?: components["schemas"]["EntryType"] | null;
-                /** @description Minimum year */
-                year_from?: number | null;
-                /** @description Maximum year */
-                year_to?: number | null;
-                /** @description Has PDF attached */
-                has_pdf?: boolean | null;
-                /** @description Read status */
-                read?: boolean | null;
-                /** @description Sort order (e.g. 'year:desc') */
-                sort?: string | null;
-                /** @description Results per page */
-                limit?: number;
-                /** @description Results offset */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  update_notes_api_entries__entry_id__notes_patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    list_venues_api_venues_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-                category?: components["schemas"]["VenueCategory"] | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VenueListItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NotesRequest"];
+      };
     };
-    get_venue_api_venues__slug__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VenueDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["NotesResponse"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    get_venue_entries_api_venues__slug__entries_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VenueEntryItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_bibtex_api_entries__entry_id__bibtex_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    list_subjects_api_subjects_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubjectListItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "text/plain": string;
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    get_subject_api_subjects__slug__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubjectDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_pdf_api_entries__entry_id__pdf_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    get_subject_entries_api_subjects__slug__entries_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubjectEntryItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": unknown;
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    list_topics_api_topics_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TopicListItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_entry_s2_api_entries__entry_id__s2_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    get_topic_api_topics__slug__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TopicDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["S2MetaResponse"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    get_topic_entries_api_topics__slug__entries_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-                sort_by?: string;
-                sort_order?: string;
-            };
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TopicEntryItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  };
+  get_citations_api_entries__entry_id__citations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
-    health_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["S2PaperResponse"][];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    stats_api_stats_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StatsResponse"];
-                };
-            };
-        };
+  };
+  get_references_api_entries__entry_id__references_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
     };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["S2PaperResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_graph_api_graph__entry_id__get: {
+    parameters: {
+      query?: {
+        /** @description Hops to expand (1 or 2) */
+        depth?: number;
+        /** @description Max nodes to return */
+        max_nodes?: number;
+      };
+      header?: never;
+      path: {
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GraphResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_collections_api_collections_get: {
+    parameters: {
+      query?: {
+        /** @description Maximum results */
+        limit?: number;
+        /** @description Results offset */
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CollectionResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_collection_api_collections_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CollectionCreate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CollectionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_collection_api_collections__collection_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        collection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CollectionDetailResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_collection_api_collections__collection_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        collection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  add_entry_to_collection_api_collections__collection_id__entries__entry_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        collection_id: string;
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_entry_from_collection_api_collections__collection_id__entries__entry_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        collection_id: string;
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  import_bibtex_api_ingest_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ImportRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  search_entries_api_search_get: {
+    parameters: {
+      query?: {
+        /** @description Search query */
+        q?: string | null;
+        /** @description Filter by entry type */
+        entry_type?: components["schemas"]["EntryType"] | null;
+        /** @description Minimum year */
+        year_from?: number | null;
+        /** @description Maximum year */
+        year_to?: number | null;
+        /** @description Has PDF attached */
+        has_pdf?: boolean | null;
+        /** @description Read status */
+        read?: boolean | null;
+        /** @description Sort order (e.g. 'year:desc') */
+        sort?: string | null;
+        /** @description Results per page */
+        limit?: number;
+        /** @description Results offset */
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SearchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_venues_api_venues_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+        category?: components["schemas"]["VenueCategory"] | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VenueListItem"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_venue_api_venues__slug__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VenueDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_venue_entries_api_venues__slug__entries_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VenueEntryItem"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_subjects_api_subjects_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubjectListItem"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_subject_api_subjects__slug__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubjectDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_subject_entries_api_subjects__slug__entries_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubjectEntryItem"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_topics_api_topics_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TopicListItem"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_topic_api_topics__slug__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TopicDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_topic_entries_api_topics__slug__entries_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+        sort_by?: string;
+        sort_order?: string;
+      };
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TopicEntryItem"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  health_health_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  stats_api_stats_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StatsResponse"];
+        };
+      };
+    };
+  };
 }

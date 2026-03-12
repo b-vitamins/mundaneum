@@ -51,7 +51,9 @@ class Subject(Base):
     )
     slug: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
-    parent_slug: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    parent_slug: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, index=True
+    )
     display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     entries: Mapped[list["Entry"]] = relationship("Entry", back_populates="subject")

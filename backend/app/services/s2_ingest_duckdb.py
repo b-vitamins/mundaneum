@@ -21,7 +21,11 @@ logger = logging.getLogger(__name__)
 def find_shards(shards_dir: Path, dataset_name: str) -> list[Path]:
     """Find all downloaded shard files for a dataset."""
     releases = sorted(
-        [path for path in shards_dir.iterdir() if path.is_dir() and not path.name.startswith("_")],
+        [
+            path
+            for path in shards_dir.iterdir()
+            if path.is_dir() and not path.name.startswith("_")
+        ],
         reverse=True,
     )
     for release_dir in releases:
@@ -80,7 +84,9 @@ def ingest_dataset(dataset_name: str, shards: list[Path], db_path: Path) -> None
             conn.execute(statement)
 
         elapsed = time.monotonic() - t0
-        logger.info("  [%d/%d] %s (%.0fs elapsed)", index, len(shards), shard.name, elapsed)
+        logger.info(
+            "  [%d/%d] %s (%.0fs elapsed)", index, len(shards), shard.name, elapsed
+        )
 
     try:
         count = conn.execute(f"SELECT count(*) FROM {spec.table_name}").fetchone()[0]
@@ -121,16 +127,20 @@ def _sort_table(
             src,
             sort_cols,
         )
-        conn.execute(f"""
+        conn.execute(
+            f"""
             CREATE OR REPLACE TABLE {table_name} AS
             SELECT * FROM {src} ORDER BY {sort_cols}
-        """)
+        """
+        )
     else:
         logger.info("  Sorting %s by %s...", table_name, sort_cols)
-        conn.execute(f"""
+        conn.execute(
+            f"""
             CREATE OR REPLACE TABLE {table_name} AS
             SELECT * FROM {table_name} ORDER BY {sort_cols}
-        """)
+        """
+        )
     elapsed = time.monotonic() - t0
     logger.info("  Done: %s (%.0fs elapsed)", table_name, elapsed)
 
@@ -149,7 +159,11 @@ def build_indexes(db_path: Path) -> None:
 
     existing = {row[0] for row in conn.execute("SHOW TABLES").fetchall()}
     for optimization in SORT_OPTIMIZATIONS:
-        src = optimization.source_table if optimization.is_copy else optimization.table_name
+        src = (
+            optimization.source_table
+            if optimization.is_copy
+            else optimization.table_name
+        )
         if src not in existing:
             logger.info(
                 "  Skipping %s: source table %s not found",
@@ -192,7 +206,9 @@ def get_status(db_path: Path, shards_dir: Path) -> dict:
     status = {
         "db_path": str(db_path),
         "db_exists": db_path.exists(),
-        "db_size_gb": round(db_path.stat().st_size / 1024**3, 2) if db_path.exists() else 0,
+        "db_size_gb": round(db_path.stat().st_size / 1024**3, 2)
+        if db_path.exists()
+        else 0,
         "shards_path": str(shards_dir),
         "shards_exist": shards_dir.exists(),
         "datasets": {},

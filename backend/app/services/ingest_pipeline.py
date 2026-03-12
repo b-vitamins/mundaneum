@@ -10,14 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging import get_logger
 from app.models import Entry
+from app.services.bibliography_contract import (
+    BibliographySourceFile,
+    discover_bibliography_sources,
+)
 from app.services.domain_events import DomainEventBus, EntriesChanged
 from app.services.ingest_entities import (
     apply_entry_fields,
     build_ingest_context,
     rebuild_author_links,
-    rebuild_topic_links,
+    sync_topic_links,
 )
-from app.services.parser import find_bib_files, parse_bib_file
+from app.services.parser import parse_bib_file
 from app.services.sync import (
     MeilisearchUnavailableError,
     SearchIndexService,
@@ -61,6 +65,7 @@ async def ingest_entries_batch(
         try:
             async with session.begin_nested():
                 entry = context.entries_by_citation_key.get(citation_key)
+                created = entry is None
                 if entry is None:
                     entry = Entry(
                         citation_key=citation_key,
@@ -71,9 +76,24 @@ async def ingest_entries_batch(
                     session.add(entry)
                     context.entries_by_citation_key[citation_key] = entry
 
-                apply_entry_fields(entry, entry_data, context)
-                rebuild_author_links(entry, entry_data, context)
-                rebuild_topic_links(entry, entry_data, context)
+                apply_entry_fields(
+                    entry,
+                    entry_data,
+                    context,
+                    created=created,
+                )
+                rebuild_author_links(
+                    entry,
+                    entry_data,
+                    context,
+                    created=created,
+                )
+                sync_topic_links(
+                    entry,
+                    entry_data,
+                    context,
+                    created=created,
+                )
                 await session.flush()
                 imported.append(entry)
         except IntegrityError as exc:
@@ -166,7 +186,7 @@ async def ingest_parsed_entries(
 
 async def ingest_bib_file(
     session: AsyncSession,
-    bib_path: Path,
+    bib_path: Path | BibliographySourceFile,
     *,
     batch_size: int = 100,
     sync_search: bool = True,
@@ -174,7 +194,10 @@ async def ingest_bib_file(
     event_bus: DomainEventBus | None = None,
 ) -> IngestResult:
     """Parse and ingest one bibliography file using the shared pipeline."""
-    entries_data = parse_bib_file(bib_path)
+    if isinstance(bib_path, BibliographySourceFile):
+        entries_data = parse_bib_file(bib_path.path, source=bib_path)
+    else:
+        entries_data = parse_bib_file(bib_path)
     if not entries_data:
         return IngestResult()
     return await ingest_parsed_entries(
@@ -212,19 +235,19 @@ async def ingest_directory(
         logger.error("Path is not a directory: %s", directory)
         return {"imported": 0, "errors": 0, "total_parsed": 0}
 
-    bib_files = list(find_bib_files(directory))
-    if not bib_files:
+    bib_sources = discover_bibliography_sources(directory)
+    if not bib_sources:
         logger.warning("No bibliography files found in %s", directory)
         return {"imported": 0, "errors": 0, "total_parsed": 0}
 
-    logger.info("Scanning directory: %s (%d files)", directory, len(bib_files))
+    logger.info("Scanning directory: %s (%d files)", directory, len(bib_sources))
     ensure_search_index_ready(search_index)
 
     result = IngestResult()
-    for bib_path in bib_files:
+    for source in bib_sources:
         file_result = await ingest_bib_file(
             session,
-            bib_path,
+            source,
             search_index=search_index,
             event_bus=event_bus,
         )
@@ -232,7 +255,7 @@ async def ingest_directory(
         logger.info(
             "Parsed %d entries from %s",
             file_result.total_parsed,
-            bib_path.name,
+            source.source_file,
         )
 
     logger.info(

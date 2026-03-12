@@ -86,4 +86,6 @@ async def test_graph_provider_builds_subgraph(db_session):
 
     assert graph.center_id == "center"
     assert {node.id for node in graph.nodes} >= {"center", "neighbor"}
-    assert any(edge.source == "center" and edge.target == "neighbor" for edge in graph.edges)
+    assert any(
+        edge.source == "center" and edge.target == "neighbor" for edge in graph.edges
+    )

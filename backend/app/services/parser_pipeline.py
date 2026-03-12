@@ -15,6 +15,7 @@ from app.services.parser_catalogs import PROMOTED_FIELDS, REQUIRED_FIELDS
 class EntryParseState:
     entry: dict
     source_file: str
+    source_role: str
     file_metadata: dict[str, str | list[str]]
     citation_key: str
     entry_type_str: str
@@ -40,6 +41,7 @@ class EntryParseState:
             "required_fields": self.required_fields,
             "optional_fields": self.optional_fields,
             "source_file": self.source_file,
+            "source_role": self.source_role,
             "subject": self.subject,
             "topics": self.topics,
             "venue_slug": self.venue_slug,

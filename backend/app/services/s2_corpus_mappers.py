@@ -46,10 +46,7 @@ class CorpusRowMapper:
             title=paper.title,
             year=paper.year,
             venue=paper.venue,
-            authors=[
-                {"authorId": row[0], "name": row[1]}
-                for row in author_rows
-            ],
+            authors=[{"authorId": row[0], "name": row[1]} for row in author_rows],
             abstract=abstract_row[0] if abstract_row else None,
             tldr=tldr_row[0] if tldr_row else None,
             citation_count=paper.citation_count,
@@ -109,9 +106,7 @@ class CorpusRowMapper:
 
         open_access_pdf = data.get("openAccessPdf")
         open_access_url = (
-            open_access_pdf.get("url")
-            if isinstance(open_access_pdf, Mapping)
-            else None
+            open_access_pdf.get("url") if isinstance(open_access_pdf, Mapping) else None
         )
 
         authors = data.get("authors") or []

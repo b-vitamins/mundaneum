@@ -54,6 +54,7 @@ ENV/
 
 # Local data
 data/
+.cache/
 
 # Docker volumes
 postgres_data/

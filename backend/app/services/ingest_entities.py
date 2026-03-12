@@ -221,8 +221,14 @@ def apply_entry_fields(
     entry: Entry,
     entry_data: dict,
     context: IngestBatchContext,
+    *,
+    created: bool,
 ) -> None:
     """Apply parsed BibTeX fields onto an ORM entry."""
+    source_role = entry_data.get("source_role", "canonical")
+    if not created and source_role != "canonical":
+        return
+
     entry.entry_type = entry_data["entry_type"]
     entry.title = entry_data["title"]
     entry.year = entry_data["year"]
@@ -238,8 +244,14 @@ def rebuild_author_links(
     entry: Entry,
     entry_data: dict,
     context: IngestBatchContext,
+    *,
+    created: bool,
 ) -> None:
     """Rebuild author relations from parsed author order."""
+    source_role = entry_data.get("source_role", "canonical")
+    if not created and source_role != "canonical":
+        return
+
     entry.authors.clear()
 
     seen_authors: set[str] = set()
@@ -261,22 +273,31 @@ def rebuild_author_links(
         )
 
 
-def rebuild_topic_links(
+def sync_topic_links(
     entry: Entry,
     entry_data: dict,
     context: IngestBatchContext,
+    *,
+    created: bool,
 ) -> None:
-    """Rebuild topic relations from parsed topic slugs."""
-    entry.topics.clear()
+    """Apply curated topic links without clobbering canonical entry state."""
+    source_role = entry_data.get("source_role", "canonical")
+    if source_role != "curated":
+        return
 
-    seen_topics: set[str] = set()
+    if created:
+        entry.topics.clear()
+
+    existing_topics = {
+        entry_topic.topic.slug for entry_topic in entry.topics if entry_topic.topic
+    }
     for topic_slug in entry_data.get("topics", []):
-        if topic_slug in seen_topics:
+        if topic_slug in existing_topics:
             continue
-        seen_topics.add(topic_slug)
 
         topic = context.topics_by_slug.get(topic_slug)
         if topic is None:
             continue
 
         entry.topics.append(EntryTopic(topic=topic))
+        existing_topics.add(topic_slug)

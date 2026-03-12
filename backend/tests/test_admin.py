@@ -25,7 +25,9 @@ async def test_health_endpoint(client: AsyncClient):
     assert "status" in data
     assert "database" in data
     assert "search" in data
-    assert "bib_directory" in data
+    assert "bibliography" in data
+    assert "bibliography_repo_url" in data
+    assert "bibliography_checkout_path" in data
     assert "bib_files_count" in data
 
 

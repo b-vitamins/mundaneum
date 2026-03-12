@@ -66,7 +66,9 @@ class SearchProjection:
         try:
             self._search_index.ensure_index()
         except MeilisearchUnavailableError:
-            logger.warning("Skipping search projection because Meilisearch is unavailable")
+            logger.warning(
+                "Skipping search projection because Meilisearch is unavailable"
+            )
             return
 
         async with self._session_factory() as session:

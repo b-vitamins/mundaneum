@@ -107,7 +107,9 @@ def download_shard(url: str, dest: Path, max_retries: int = 3) -> bool | str:
                         if total > 0:
                             pct = downloaded / total * 100
                             elapsed = time.monotonic() - t0
-                            rate = downloaded / elapsed / 1024 / 1024 if elapsed > 0 else 0
+                            rate = (
+                                downloaded / elapsed / 1024 / 1024 if elapsed > 0 else 0
+                            )
                             print(
                                 f"\r    {pct:.1f}% ({rate:.1f} MB/s)",
                                 end="",

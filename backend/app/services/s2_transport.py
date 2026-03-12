@@ -91,7 +91,9 @@ class S2Transport:
                     continue
                 if response.status_code == 404:
                     return None
-                logger.error("S2 %s: %s (%s)", response.status_code, response.text[:200], path)
+                logger.error(
+                    "S2 %s: %s (%s)", response.status_code, response.text[:200], path
+                )
                 return None
             except httpx.TimeoutException:
                 wait = 2.0 * (2**attempt)
@@ -125,7 +127,9 @@ class S2Transport:
                     continue
                 if response.status_code == 404:
                     return None
-                logger.error("S2 %s: %s (%s)", response.status_code, response.text[:200], path)
+                logger.error(
+                    "S2 %s: %s (%s)", response.status_code, response.text[:200], path
+                )
                 return None
             except httpx.TimeoutException:
                 wait = 2.0 * (2**attempt)

@@ -120,7 +120,9 @@ class StorageService:
 
     def list_files(self, prefix: str = "") -> list[str]:
         try:
-            objects = self.client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
+            objects = self.client.list_objects(
+                BUCKET_NAME, prefix=prefix, recursive=True
+            )
             return [obj.object_name for obj in objects]
         except S3Error as exc:
             logger.error("Failed to list files: %s", exc)

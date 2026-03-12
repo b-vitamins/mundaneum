@@ -15,7 +15,9 @@ from app.services.s2_protocol import EdgeRecord, PaperRecord
 from app.services.s2_sync import SyncOrchestrator
 
 
-def serialize_s2_paper(paper: PaperRecord, edge: EdgeRecord | None = None) -> S2PaperResponse:
+def serialize_s2_paper(
+    paper: PaperRecord, edge: EdgeRecord | None = None
+) -> S2PaperResponse:
     """Project a canonical paper record into the entry API shape."""
     return S2PaperResponse(
         s2_id=paper.s2_id or "",
@@ -98,7 +100,9 @@ async def get_related_s2_papers(
     if not s2_id:
         return []
 
-    edge_loader = source.get_citations if relation == "citations" else source.get_references
+    edge_loader = (
+        source.get_citations if relation == "citations" else source.get_references
+    )
     edges = await edge_loader(s2_id)
     if not edges:
         return []
