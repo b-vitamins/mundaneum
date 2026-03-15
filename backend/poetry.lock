@@ -181,13 +181,13 @@ test = ["flake8 (>=6.1,<7.0)", "uvloop (>=0.15.3) ; platform_system != \"Windows
 
 [[package]]
 name = "bibtexparser"
-version = "1.4.3"
+version = "1.4.4"
 description = "Bibtex parser for python 3"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "bibtexparser-1.4.3.tar.gz", hash = "sha256:a9c7ded64bc137720e4df0b1b7f12734edc1361185f1c9097048ff7c35af2b8f"},
+    {file = "bibtexparser-1.4.4.tar.gz", hash = "sha256:093b6c824f7a71d3a748867c4057b71f77c55b8dbc07efc993b781771520d8fb"},
 ]
 
 [package.dependencies]
@@ -1852,4 +1852,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "44a9332c8531cde013da7ad8cd99c93839cf8b8db1b5b93abdb08a9f020fdc0a"
+content-hash = "a18fba630f25b3ac18520f5bcd792ce2b97d224ce4417d2483f663cc40ff9d0c"

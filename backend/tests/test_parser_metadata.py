@@ -20,6 +20,29 @@ def test_clean_latex_string():
     assert clean_latex_string("Hello World") == "Hello World"
 
 
+def test_clean_latex_string_ifmmode_conditionals():
+    r"""Test \ifmmode conditional patterns used by APS journal exports."""
+    # Single caron via \ifmmode
+    assert clean_latex_string(r"\ifmmode \check{c}\else \v{c}\fi{}") == "č"
+    assert clean_latex_string(r"\ifmmode\check{c}\else\v{c}\fi{}") == "č"
+    # Acute accent via \ifmmode
+    assert clean_latex_string(r"\ifmmode \acute{c}\else \'{c}\fi{}") == "ć"
+    # Dot-above via \ifmmode
+    assert clean_latex_string(r"\ifmmode \dot{Z}\else \.{Z}\fi{}") == "Ż"
+    # Cedilla via \ifmmode (\mbox variant)
+    assert clean_latex_string(r"\ifmmode \mbox{\c{c}}\else \c{c}\fi{}ois") == "çois"
+
+
+def test_clean_latex_string_accented_names():
+    """Test common accented name patterns."""
+    assert clean_latex_string(r"T\"ucker") == "Tücker"
+    assert clean_latex_string(r"Mu\~noz") == "Muñoz"
+    assert clean_latex_string(r"\v{S}") == "Š"
+    assert clean_latex_string(r"R\'evai") == "Révai"
+    assert clean_latex_string(r"L\'{o}pez") == "López"
+    assert clean_latex_string(r"\v{S}\'arka") == "Šárka"
+
+
 def test_discover_bibliography_sources_uses_bibmeta_contract(tmp_path: Path):
     (tmp_path / "meta").mkdir()
     (tmp_path / "books").mkdir()

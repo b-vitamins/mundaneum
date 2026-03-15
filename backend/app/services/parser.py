@@ -82,6 +82,10 @@ def parse_subject_name(slug: str) -> tuple[str, str | None, str]:
         or subarea_slug.replace("-", " ").title()
     )
 
+    # Avoid redundant display like "Design → Design"
+    if subarea == parent:
+        subarea = "General"
+
     return parent, subarea, subarea
 
 
@@ -117,6 +121,60 @@ def get_venue_info(slug: str) -> tuple[str, str, list[str]] | None:
 # Singleton converter for LaTeX to text
 _latex_converter = LatexNodes2Text()
 
+# Pre-compiled pattern for \ifmmode ... \else ... \fi conditionals.
+# Many journal BibTeX files (especially APS) encode accented characters as:
+#   \ifmmode \check{c}\else \v{c}\fi{}
+# We keep only the \else branch (text-mode), since we always want plain text.
+_IFMMODE_RE = re.compile(
+    r"\\ifmmode\b\s*"
+    r"((?:[^\\]|\\(?!else\b))*?)"
+    r"\\else\b\s*"
+    r"((?:[^\\]|\\(?!fi\b))*?)"
+    r"\\fi\b\s*\{?\}?",
+    re.DOTALL,
+)
+
+# Normalize bare accent shorthand like \"u -> \"{u} before conversion.
+_BARE_ACCENT_RE = re.compile(r"\\([\"'^`~=.vHukbdrtc])\s*([A-Za-z])")
+
+# Stray \fi that may remain after partial processing
+_STRAY_FI_RE = re.compile(r"\\fi\b\s*\{?\}?")
+
+# Empty braces left behind after conversion
+_EMPTY_BRACES_RE = re.compile(r"\{\s*\}")
+
+# Commands that may survive latex_to_text() in malformed BibTeX fragments.
+_LEFTOVER_LATEX_COMMAND_RE = re.compile(
+    r"\\(?:(?:ifmmode|else|fi|check|acute|grave|tilde|bar|dot|breve|c|v|H|u|k|b|d|r|t)\b|[\"'^`~=.])"
+    r"\s*(?:\{([^{}]*)\}|([A-Za-z]))?"
+)
+
+_ORPHAN_BACKSLASH_RE = re.compile(r"\\+")
+
+
+def _extract_ifmmode_text(text: str) -> str:
+    r"""Collapse \ifmmode conditionals to their text-mode branch."""
+    while True:
+        collapsed, count = _IFMMODE_RE.subn(lambda match: match.group(2), text)
+        if count == 0:
+            return text
+        text = collapsed
+
+
+def _normalize_bare_accents(text: str) -> str:
+    """Convert bare accent forms like \"u to \"{u} for stable decoding."""
+    return _BARE_ACCENT_RE.sub(r"\\\1{\2}", text)
+
+
+def _strip_leftover_latex(text: str) -> str:
+    """Best-effort cleanup for commands that survive conversion."""
+    cleaned = _LEFTOVER_LATEX_COMMAND_RE.sub(
+        lambda match: match.group(1) or match.group(2) or "",
+        text,
+    )
+    cleaned = _ORPHAN_BACKSLASH_RE.sub("", cleaned)
+    return _EMPTY_BRACES_RE.sub("", cleaned)
+
 
 def clean_latex_string(text: str) -> str:
     r"""
@@ -127,6 +185,7 @@ def clean_latex_string(text: str) -> str:
     - \"{o} -> ö
     - {\ss} -> ß
     - Curly brace wrappers: {Something} -> Something
+    - \ifmmode ... \else ... \fi  -> text-mode branch only
 
     Falls back to original text if conversion fails.
     """
@@ -134,8 +193,17 @@ def clean_latex_string(text: str) -> str:
         return ""
 
     try:
+        # Pre-process: resolve \ifmmode conditionals to their \else branch
+        preprocessed = _extract_ifmmode_text(text)
+        preprocessed = _normalize_bare_accents(preprocessed)
+        # Clean up any stray \fi left after nested conditionals
+        preprocessed = _STRAY_FI_RE.sub("", preprocessed)
+        # Remove empty braces
+        preprocessed = _EMPTY_BRACES_RE.sub("", preprocessed)
+
         # Use pylatexenc for robust LaTeX -> Unicode conversion
-        cleaned = _latex_converter.latex_to_text(text)
+        cleaned = _latex_converter.latex_to_text(preprocessed)
+        cleaned = _strip_leftover_latex(cleaned)
 
         # Clean up any remaining curly braces (common in BibTeX titles)
         cleaned = re.sub(r"\{([^}]*)\}", r"\1", cleaned)
