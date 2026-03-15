@@ -3,7 +3,7 @@ Entry serialization helpers.
 """
 
 from app.models import Entry
-from app.routers.entity_common import entry_authors, entry_venue
+from app.routers.entity_common import entry_author_refs, entry_authors, entry_venue
 from app.schemas.entries import EntryDetailResponse, EntryResponse
 from app.schemas.search import SearchHitResponse
 
@@ -15,13 +15,15 @@ def entry_abstract(entry: Entry) -> str | None:
 
 def serialize_entry(entry: Entry) -> EntryResponse:
     """Serialize an entry row for list responses."""
+    author_refs = entry_author_refs(entry)
     return EntryResponse(
         id=str(entry.id),
         citation_key=entry.citation_key,
         entry_type=entry.entry_type.value,
         title=entry.title,
         year=entry.year,
-        authors=entry_authors(entry),
+        authors=[author["name"] for author in author_refs],
+        author_refs=author_refs,
         venue=entry_venue(entry),
         abstract=entry_abstract(entry),
         file_path=entry.file_path,

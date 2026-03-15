@@ -4,13 +4,14 @@ Entry query helpers.
 
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.exceptions import NotFoundError
 from app.models import Entry, EntryAuthor
 from app.routers.entity_common import apply_sort, paginate
+from app.schemas.search import SearchFilters
 
 ENTRY_SORT_COLUMNS = {
     "title": Entry.title,
@@ -28,6 +29,24 @@ def entry_load_options(statement: Select) -> Select:
     )
 
 
+def apply_entry_filters(statement: Select, *, filters: SearchFilters) -> Select:
+    """Apply browse/list filters to an entry query."""
+    if filters.entry_type is not None:
+        statement = statement.where(Entry.entry_type == filters.entry_type)
+    if filters.year_from is not None:
+        statement = statement.where(Entry.year >= filters.year_from)
+    if filters.year_to is not None:
+        statement = statement.where(Entry.year <= filters.year_to)
+    if filters.has_pdf is True:
+        statement = statement.where(Entry.file_path.is_not(None))
+    elif filters.has_pdf is False:
+        statement = statement.where(Entry.file_path.is_(None))
+    if filters.read is not None:
+        statement = statement.where(Entry.read == filters.read)
+
+    return statement
+
+
 async def list_entries(
     db: AsyncSession,
     *,
@@ -35,9 +54,15 @@ async def list_entries(
     offset: int,
     sort_by: str,
     sort_order: str,
-) -> list[Entry]:
+    filters: SearchFilters | None = None,
+) -> tuple[list[Entry], int]:
     """Fetch a paginated entry list with serializer-friendly relationships."""
-    query = entry_load_options(select(Entry))
+    filters = filters or SearchFilters()
+
+    total_query = apply_entry_filters(select(Entry.id), filters=filters)
+    total = await db.scalar(select(func.count()).select_from(total_query.subquery()))
+
+    query = entry_load_options(apply_entry_filters(select(Entry), filters=filters))
     query = apply_sort(
         query,
         sort_by=sort_by,
@@ -46,7 +71,7 @@ async def list_entries(
     )
     query = paginate(query, limit=limit, offset=offset)
     result = await db.execute(query)
-    return result.scalars().all()
+    return result.scalars().all(), total or 0
 
 
 async def get_entry(

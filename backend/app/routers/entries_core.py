@@ -4,12 +4,13 @@ Core entry endpoints.
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.logging import get_logger
+from app.models import EntryType
 from app.schemas.entries import (
     EntryDetailResponse,
     EntryResponse,
@@ -18,6 +19,7 @@ from app.schemas.entries import (
     ReadRequest,
     ReadResponse,
 )
+from app.schemas.search import SearchFilters
 from app.services.entry_exports import render_bibtex, resolve_pdf_path
 from app.services.entry_mutations import update_entry_notes, update_entry_read
 from app.services.entry_queries import get_entry, list_entries
@@ -34,20 +36,34 @@ router = APIRouter()
 
 @router.get("", response_model=list[EntryResponse])
 async def list_entry_rows(
+    response: Response,
     limit: int = 50,
     offset: int = 0,
     sort_by: str = "created_at",
     sort_order: str = "desc",
+    entry_type: EntryType | None = Query(None, description="Filter by entry type"),
+    year_from: int | None = Query(None, description="Minimum year"),
+    year_to: int | None = Query(None, description="Maximum year"),
+    has_pdf: bool | None = Query(None, description="Has PDF attached"),
+    read: bool | None = Query(None, description="Read status"),
     db: AsyncSession = Depends(get_db),
 ) -> list[EntryResponse]:
     """List entries with pagination and consistent serializer rules."""
-    entries = await list_entries(
+    entries, total = await list_entries(
         db,
         limit=limit,
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        filters=SearchFilters(
+            entry_type=entry_type,
+            year_from=year_from,
+            year_to=year_to,
+            has_pdf=has_pdf,
+            read=read,
+        ),
     )
+    response.headers["X-Total-Count"] = str(total)
     return [serialize_entry(entry) for entry in entries]
 
 

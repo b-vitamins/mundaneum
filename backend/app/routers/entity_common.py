@@ -67,8 +67,16 @@ async def fetch_row_or_404(
 
 def entry_authors(entry: Entry) -> list[str]:
     """Return author names in stored position order."""
+    return [author["name"] for author in entry_author_refs(entry)]
+
+
+def entry_author_refs(entry: Entry) -> list[dict[str, str]]:
+    """Return author IDs and names in stored position order."""
     return [
-        relation.author.name
+        {
+            "id": str(relation.author_id),
+            "name": relation.author.name,
+        }
         for relation in sorted(entry.authors, key=lambda relation: relation.position)
     ]
 

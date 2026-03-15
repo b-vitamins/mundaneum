@@ -2,7 +2,9 @@ import { client, handleError, withRetry } from '@/api/base'
 import type {
     EntryDetail,
     EntryListItem,
+    EntryListResult,
     GraphData,
+    SearchFilters,
     S2Meta,
     S2Paper,
     Stats,
@@ -18,14 +20,36 @@ export const libraryApi = {
         }
     },
 
-    async listEntries(limit = 50, offset = 0, sortBy = 'created_at', sortOrder = 'desc'): Promise<EntryListItem[]> {
+    async listEntries(
+        limit = 50,
+        offset = 0,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        filters: SearchFilters = {}
+    ): Promise<EntryListResult> {
         try {
-            const { data } = await withRetry(() =>
+            const { data, headers } = await withRetry(() =>
                 client.get('/entries', {
-                    params: { limit, offset, sort_by: sortBy, sort_order: sortOrder }
+                    params: {
+                        limit,
+                        offset,
+                        sort_by: sortBy,
+                        sort_order: sortOrder,
+                        ...filters,
+                    }
                 })
             )
-            return data
+            const totalHeader = headers['x-total-count']
+            const total =
+                typeof totalHeader === 'string'
+                    ? Number(totalHeader)
+                    : Array.isArray(totalHeader)
+                      ? Number(totalHeader[0])
+                      : data.length
+            return {
+                items: data as EntryListItem[],
+                total: Number.isFinite(total) ? total : data.length,
+            }
         } catch (error) {
             return handleError(error)
         }

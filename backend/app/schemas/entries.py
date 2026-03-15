@@ -2,7 +2,14 @@
 Shared request/response models for entry endpoints.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class AuthorRef(BaseModel):
+    """Minimal author reference for linking entry views to author pages."""
+
+    id: str
+    name: str
 
 
 class EntryResponse(BaseModel):
@@ -14,6 +21,7 @@ class EntryResponse(BaseModel):
     title: str
     year: int | None = None
     authors: list[str]
+    author_refs: list[AuthorRef] = Field(default_factory=list)
     venue: str | None = None
     abstract: str | None = None
     file_path: str | None = None

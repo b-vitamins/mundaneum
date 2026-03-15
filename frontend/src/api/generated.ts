@@ -785,6 +785,16 @@ export interface components {
       entry_count: number;
     };
     /**
+     * AuthorRef
+     * @description Minimal author reference for linking entry views to author pages.
+     */
+    AuthorRef: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /**
      * CollectionCreate
      * @description Request model for creating a collection.
      */
@@ -851,6 +861,8 @@ export interface components {
       year?: number | null;
       /** Authors */
       authors: string[];
+      /** Author Refs */
+      author_refs?: components["schemas"]["AuthorRef"][];
       /** Venue */
       venue?: string | null;
       /** Abstract */
@@ -892,6 +904,8 @@ export interface components {
       year?: number | null;
       /** Authors */
       authors: string[];
+      /** Author Refs */
+      author_refs?: components["schemas"]["AuthorRef"][];
       /** Venue */
       venue?: string | null;
       /** Abstract */
@@ -1724,6 +1738,16 @@ export interface operations {
         offset?: number;
         sort_by?: string;
         sort_order?: string;
+        /** @description Filter by entry type */
+        entry_type?: components["schemas"]["EntryType"] | null;
+        /** @description Minimum year */
+        year_from?: number | null;
+        /** @description Maximum year */
+        year_to?: number | null;
+        /** @description Has PDF attached */
+        has_pdf?: boolean | null;
+        /** @description Read status */
+        read?: boolean | null;
       };
       header?: never;
       path?: never;

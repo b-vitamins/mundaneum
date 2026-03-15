@@ -4,6 +4,7 @@ type Schema<Name extends keyof components['schemas']> = components['schemas'][Na
 
 export type Stats = Schema<'StatsResponse'>
 
+export type AuthorRef = Schema<'AuthorRef'>
 export type EntryListItem = Schema<'EntryResponse'>
 export type SearchHit = Schema<'SearchHitResponse'>
 export type SearchStatus = Schema<'SearchStatus'>
@@ -58,6 +59,11 @@ export type EntityEntryItem = (SubjectEntryItem | TopicEntryItem | VenueEntryIte
 
 export type SearchSortField = 'created_at' | 'year' | 'title'
 export type SearchSortOrder = 'asc' | 'desc'
+
+export interface EntryListResult {
+    items: EntryListItem[]
+    total: number
+}
 
 export interface SearchSort {
     field: SearchSortField
