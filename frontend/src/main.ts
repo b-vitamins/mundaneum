@@ -88,6 +88,11 @@ const router = createRouter({
             name: 'topic-detail',
             component: () => import('./views/CatalogDetailPage.vue'),
             props: { entity: 'topics' }
+        },
+        {
+            path: '/:pathMatch(.*)*',
+            name: 'not-found',
+            component: () => import('./views/NotFound.vue')
         }
     ]
 })

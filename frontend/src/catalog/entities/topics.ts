@@ -30,6 +30,7 @@ export const topicListPageModel: CatalogListPageModel = {
     title: 'Topics',
     loadingLabel: 'Loading topics...',
     emptyLabel: 'No topics found.',
+    helperText: 'Topics are curated from bibliography metadata. Add more topic tags in bibmeta.toml to enrich this view.',
     defaultSort: { field: 'name', label: 'Name', defaultOrder: 'asc' },
     sortOptions: [
         { field: 'name', label: 'Name', defaultOrder: 'asc' },

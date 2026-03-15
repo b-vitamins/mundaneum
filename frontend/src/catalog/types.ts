@@ -57,6 +57,7 @@ export interface CatalogListPageModel {
     title: string
     loadingLabel: string
     emptyLabel: string
+    helperText?: string
     defaultSort: CatalogSortOption
     sortOptions: CatalogSortOption[]
     categoryOptions?: CatalogFilterOption[]

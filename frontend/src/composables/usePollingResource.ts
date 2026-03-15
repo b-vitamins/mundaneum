@@ -4,6 +4,7 @@ export interface PollingResourceOptions<T> {
     pollWhile?: (data: T) => boolean
     interval?: number
     lazy?: boolean
+    maxAttempts?: number
 }
 
 export interface PollingResourceState<T> {
@@ -12,6 +13,7 @@ export interface PollingResourceState<T> {
     syncing: Ref<boolean>
     error: Ref<string>
     ready: Ref<boolean>
+    exhausted: Ref<boolean>
     fetch: () => Promise<void>
     reset: () => void
     stop: () => void
@@ -21,18 +23,20 @@ export function usePollingResource<T>(
     fetcher: () => Promise<T>,
     options: PollingResourceOptions<T> = {}
 ): PollingResourceState<T> {
-    const { pollWhile, interval = 5000, lazy = false } = options
+    const { pollWhile, interval = 5000, lazy = false, maxAttempts } = options
 
     const data = ref<T | null>(null) as Ref<T | null>
     const loading = ref(!lazy)
     const syncing = ref(false)
     const error = ref('')
     const ready = ref(false)
+    const exhausted = ref(false)
 
     let timer: ReturnType<typeof setTimeout> | null = null
     let requestVersion = 0
     let disposed = false
     let loadedOnce = false
+    let pollCount = 0
 
     function clearTimer() {
         if (timer) {
@@ -55,7 +59,9 @@ export function usePollingResource<T>(
         syncing.value = false
         error.value = ''
         ready.value = false
+        exhausted.value = false
         loadedOnce = false
+        pollCount = 0
     }
 
     function schedulePoll() {
@@ -89,12 +95,21 @@ export function usePollingResource<T>(
             loadedOnce = true
 
             if (pollWhile && pollWhile(result)) {
-                syncing.value = true
-                ready.value = false
-                schedulePoll()
+                pollCount += 1
+                if (maxAttempts != null && pollCount >= maxAttempts) {
+                    syncing.value = false
+                    ready.value = false
+                    exhausted.value = true
+                } else {
+                    syncing.value = true
+                    ready.value = false
+                    exhausted.value = false
+                    schedulePoll()
+                }
             } else {
                 syncing.value = false
                 ready.value = true
+                exhausted.value = false
             }
         } catch (loadError) {
             if (disposed || version !== requestVersion) {
@@ -116,5 +131,5 @@ export function usePollingResource<T>(
 
     onUnmounted(stop)
 
-    return { data, loading, syncing, error, ready, fetch, reset, stop }
+    return { data, loading, syncing, error, ready, exhausted, fetch, reset, stop }
 }

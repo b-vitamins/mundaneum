@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, type S2Meta } from '@/api/client'
+import { api, type AuthorRef, type S2Meta } from '@/api/client'
 import CitationList from '@/components/CitationList.vue'
 import AppShell from '@/components/AppShell.vue'
 import { useMutation } from '@/composables/useMutation'
@@ -28,7 +28,7 @@ const collections = computed(() => collectionsResource.data.value ?? [])
 
 const s2 = usePollingResource<S2Meta>(
   () => api.getEntryS2(entryId.value),
-  { pollWhile: (d) => d.sync_status === 'syncing', interval: 5000, lazy: true }
+  { pollWhile: (d) => d.sync_status === 'syncing', interval: 5000, lazy: true, maxAttempts: 6 }
 )
 
 const pageError = computed(() => entryLoadError.value ? 'Entry not found' : '')
@@ -38,6 +38,32 @@ const mergedAbstract = computed(() => {
   if (s2.ready.value && s2.data.value?.abstract) return s2.data.value.abstract
   return null
 })
+
+const authorLinks = computed<Array<AuthorRef | { id?: undefined; name: string }>>(() => {
+  if (!entry.value) return []
+  const authorRefs = entry.value.author_refs ?? []
+  if (authorRefs.length > 0) return authorRefs
+  return entry.value.authors.map((name) => ({ name }))
+})
+
+const cleanAbstract = computed(() => {
+  if (!mergedAbstract.value) return null
+  return mergedAbstract.value
+    .replace(/``/g, '\u201c')  // `` -> left double quote
+    .replace(/''/g, '\u201d')  // '' -> right double quote
+    .replace(/`/g, '\u2018')   // ` -> left single quote
+})
+
+const FIELD_LABEL_MAP: Record<string, string> = {
+  doi: 'DOI', isbn: 'ISBN', issn: 'ISSN', url: 'URL',
+  booktitle: 'Book Title', howpublished: 'How Published',
+  crossref: 'Cross-Reference',
+}
+
+function formatFieldLabel(key: string): string {
+  if (FIELD_LABEL_MAP[key]) return FIELD_LABEL_MAP[key]
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
 
 const handleClickOutside = (e: MouseEvent) => {
   if (!(e.target as HTMLElement).closest('.collection-dropdown')) showCollectionMenu.value = false
@@ -175,7 +201,19 @@ const allFields = computed(() => {
         <div class="entry-header">
           <span class="badge badge-muted entry-type">{{ entry.entry_type }}</span>
           <h1 class="entry-title">{{ entry.title }}</h1>
-          <p class="entry-authors">{{ entry.authors.join(', ') }}</p>
+          <p v-if="authorLinks.length" class="entry-authors">
+            <template v-for="(author, index) in authorLinks" :key="`${author.name}-${index}`">
+              <router-link
+                v-if="author.id"
+                :to="{ name: 'author-detail', params: { id: author.id } }"
+                class="author-link"
+              >
+                {{ author.name }}
+              </router-link>
+              <span v-else>{{ author.name }}</span>
+              <span v-if="index < authorLinks.length - 1">, </span>
+            </template>
+          </p>
           <p class="entry-venue">
             <span v-if="entry.venue">{{ entry.venue }}</span>
             <span v-if="entry.year">· {{ entry.year }}</span>
@@ -243,6 +281,9 @@ const allFields = computed(() => {
           <template v-else-if="s2.data.value?.sync_status === 'no_match'">
             <p class="s2-no-match">Not found on Semantic Scholar</p>
           </template>
+          <template v-else-if="s2.exhausted.value">
+            <p class="s2-no-match">Semantic Scholar sync is taking longer than expected. Showing library metadata only for now.</p>
+          </template>
         </div>
 
         <!-- Tabs -->
@@ -258,8 +299,9 @@ const allFields = computed(() => {
         </nav>
 
         <section v-if="activeTab === 'abstract'" class="tab-content">
-          <p v-if="mergedAbstract" class="abstract">{{ mergedAbstract }}</p>
+          <p v-if="cleanAbstract" class="abstract">{{ cleanAbstract }}</p>
           <p v-else-if="s2.syncing.value" class="empty progressive-blur">Loading abstract…</p>
+          <p v-else-if="s2.exhausted.value" class="empty">Semantic Scholar abstract unavailable right now.</p>
           <p v-else class="empty">No abstract available</p>
         </section>
 
@@ -287,7 +329,7 @@ const allFields = computed(() => {
               <dd><code>{{ entry.source_file }}</code></dd>
             </div>
             <div v-for="field in allFields" :key="field.key" class="meta-row">
-              <dt>{{ field.key }}</dt>
+              <dt>{{ formatFieldLabel(field.key) }}</dt>
               <dd>{{ field.value }}</dd>
             </div>
           </dl>
@@ -326,6 +368,7 @@ const allFields = computed(() => {
   margin-bottom: var(--space-2); letter-spacing: -0.01em;
 }
 .entry-authors { color: var(--accent); margin-bottom: var(--space-1); }
+.author-link { color: inherit; }
 .entry-venue { color: var(--text-muted); font-size: var(--text-sm); }
 
 .actions {
@@ -358,7 +401,7 @@ const allFields = computed(() => {
 }
 .s2-tldr {
   font-size: var(--text-sm); color: var(--text); line-height: var(--leading-relaxed);
-  margin-bottom: var(--space-3); font-style: italic;
+  margin-bottom: var(--space-3);
 }
 .s2-stats { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .s2-stat { font-size: var(--text-sm); color: var(--text-muted); }
@@ -368,6 +411,7 @@ const allFields = computed(() => {
 .s2-links { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-sm); }
 .oa-link { color: var(--success); }
 .s2-no-match { font-size: var(--text-sm); color: var(--text-muted); font-style: italic; }
+:global([data-theme="dark"] .s2-tldr) { opacity: 0.95; }
 
 /* Tabs */
 .tabs-nav { margin-bottom: var(--space-5); }

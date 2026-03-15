@@ -104,7 +104,7 @@ watch(
 <template>
   <AppShell :title="model.title" :show-search="true">
     <template #actions>
-      <span class="count">{{ model.countLabel(items) }}</span>
+      <span v-if="!loading" class="count">{{ model.countLabel(items) }}</span>
     </template>
 
     <div v-if="model.categoryOptions || model.sortOptions.length > 0" class="controls">
@@ -130,6 +130,8 @@ watch(
         </button>
       </div>
     </div>
+
+    <p v-if="model.helperText" class="helper-text">{{ model.helperText }}</p>
 
     <div v-if="loading" class="status">
       <span class="spinner"></span>
@@ -194,6 +196,12 @@ watch(
   gap: var(--space-3);
   margin-bottom: var(--space-5);
   flex-wrap: wrap;
+}
+
+.helper-text {
+  margin-bottom: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .status {

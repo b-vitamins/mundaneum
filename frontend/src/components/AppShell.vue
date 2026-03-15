@@ -120,6 +120,8 @@ const goBack = (to: string) => {
 
 .back-btn {
   font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  min-height: 36px;
 }
 
 .header-right {

@@ -89,7 +89,7 @@ const {
       <!-- Results -->
       <section class="results">
         <div class="results-header" v-if="total > 0">
-          <span class="results-count">{{ total.toLocaleString() }} results</span>
+          <span class="results-count">{{ total >= 1000 ? '1,000+' : total.toLocaleString() }} results</span>
         </div>
 
         <div v-if="status === 'partial' && viewState === 'results'" class="status warning">
@@ -196,6 +196,9 @@ const {
   display: flex;
   gap: var(--space-2);
   align-items: center;
+}
+.year-range .filter-control {
+  min-width: 80px;
 }
 .year-sep {
   color: var(--text-muted);

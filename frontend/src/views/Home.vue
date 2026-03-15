@@ -29,10 +29,11 @@ onMounted(async () => {
 
 <template>
   <main class="home">
+    <button class="theme-btn-fixed" @click="toggleDark" :title="isDark ? 'Light mode' : 'Dark mode'">
+      {{ isDark ? '☀️' : '🌙' }}
+    </button>
+
     <div class="hero">
-      <button class="theme-btn" @click="toggleDark" :title="isDark ? 'Light mode' : 'Dark mode'">
-        {{ isDark ? '☀️' : '🌙' }}
-      </button>
 
       <h1 class="logo">Mundaneum</h1>
       <p class="tagline">Research intelligence for your library</p>
@@ -82,10 +83,10 @@ onMounted(async () => {
   position: relative;
 }
 
-.theme-btn {
-  position: absolute;
-  top: 0;
-  right: 0;
+.theme-btn-fixed {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
   font-size: 1.1rem;
   padding: var(--space-2);
   border-radius: var(--radius);
@@ -93,8 +94,9 @@ onMounted(async () => {
   cursor: pointer;
   background: none;
   border: none;
+  z-index: 10;
 }
-.theme-btn:hover {
+.theme-btn-fixed:hover {
   transform: scale(1.1);
 }
 
@@ -173,6 +175,7 @@ onMounted(async () => {
 .quick-links {
   display: flex;
   gap: var(--space-2);
+  row-gap: var(--space-3);
   justify-content: center;
   flex-wrap: wrap;
 }
