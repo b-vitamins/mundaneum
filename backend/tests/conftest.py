@@ -4,7 +4,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.database import get_db
+from app.database import ensure_database_schema, get_db
 from app.main import app
 
 
@@ -13,13 +13,21 @@ async def _dispose_database_pool() -> None:
     await app.state.services.database.engine.dispose()
 
 
+_schema_ready = False
+
+
 @pytest_asyncio.fixture
 async def isolated_session_factory() -> AsyncGenerator[
     async_sessionmaker[AsyncSession], None
 ]:
     """Bind tests to a single connection wrapped in a rollback-only transaction."""
+    global _schema_ready
     database = app.state.context.services.database
     original_factory = database.session_factory
+
+    if not _schema_ready:
+        await ensure_database_schema(database.engine)
+        _schema_ready = True
 
     async with database.engine.connect() as connection:
         transaction = await connection.begin()
