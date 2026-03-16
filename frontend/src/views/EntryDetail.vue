@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, type AuthorRef, type S2Meta } from '@/api/client'
+import { api, type AuthorRef, type S2Meta, type EntryNerFact } from '@/api/client'
 import CitationList from '@/components/CitationList.vue'
 import AppShell from '@/components/AppShell.vue'
 import { useMutation } from '@/composables/useMutation'
+import { nerLabelColor } from '@/features/ner/presentation'
 import { usePollingResource } from '@/composables/usePollingResource'
 import { useRouteResource } from '@/composables/useRouteResource'
 
@@ -65,6 +66,22 @@ function formatFieldLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+const nerFacts = ref<EntryNerFact[]>([])
+
+const groupedNerFacts = computed(() => {
+  const groups: Record<string, EntryNerFact[]> = {}
+  for (const fact of nerFacts.value) {
+    if (!groups[fact.label]) groups[fact.label] = []
+    groups[fact.label].push(fact)
+  }
+  // Sort groups by label, and within each group by confidence desc
+  const sorted: Record<string, EntryNerFact[]> = {}
+  for (const label of Object.keys(groups).sort()) {
+    sorted[label] = groups[label].sort((a, b) => b.confidence - a.confidence)
+  }
+  return sorted
+})
+
 const handleClickOutside = (e: MouseEvent) => {
   if (!(e.target as HTMLElement).closest('.collection-dropdown')) showCollectionMenu.value = false
 }
@@ -94,6 +111,15 @@ onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
 })
+
+// Fetch NER facts when entry loads
+watch(() => entry.value?.id, (id) => {
+  if (id) {
+    api.getEntryEntities(id).then(facts => { nerFacts.value = facts }).catch(() => {})
+  } else {
+    nerFacts.value = []
+  }
+}, { immediate: true })
 onUnmounted(() => { document.removeEventListener('click', handleClickOutside); document.removeEventListener('keydown', handleKeydown) })
 
 const toggleReadMutation = useMutation(
@@ -290,7 +316,7 @@ const allFields = computed(() => {
         <nav class="tabs-nav">
           <div class="segmented">
             <button
-              v-for="tab in ['abstract', 'notes', 'citations', 'references', 'metadata']"
+              v-for="tab in ['abstract', 'concepts', 'notes', 'citations', 'references', 'metadata']"
               :key="tab"
               :class="['segmented-item', { active: activeTab === tab }]"
               @click="activeTab = tab"
@@ -303,6 +329,27 @@ const allFields = computed(() => {
           <p v-else-if="s2.syncing.value" class="empty progressive-blur">Loading abstract…</p>
           <p v-else-if="s2.exhausted.value" class="empty">Semantic Scholar abstract unavailable right now.</p>
           <p v-else class="empty">No abstract available</p>
+        </section>
+
+        <section v-if="activeTab === 'concepts'" class="tab-content">
+          <div v-if="nerFacts.length === 0" class="empty">No extracted concepts available</div>
+          <div v-else class="concepts-grid">
+            <div v-for="(facts, label) in groupedNerFacts" :key="label" class="concept-group">
+              <h4 class="concept-label" :style="{ color: nerLabelColor(label as string) }">{{ (label as string).replace(/-/g, ' ') }}</h4>
+              <div class="concept-chips">
+                <router-link
+                  v-for="fact in facts"
+                  :key="fact.canonical_id"
+                  :to="`/entities/${fact.canonical_id}`"
+                  class="concept-chip"
+                  :style="{ borderColor: nerLabelColor(fact.label) }"
+                  :title="`${(fact.confidence * 100).toFixed(0)}% confidence · ${fact.mention_count} mention${fact.mention_count > 1 ? 's' : ''}`"
+                >
+                  {{ fact.canonical_surface }}
+                </router-link>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section v-if="activeTab === 'notes'" class="tab-content">
@@ -461,4 +508,43 @@ code {
   flex: 1; margin-right: var(--space-4);
 }
 .pdf-frame { flex: 1; border: none; width: 100%; height: 100%; background: #333; }
+/* Concepts tab */
+.concepts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.concept-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.concept-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+.concept-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.concept-chip {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full, 999px);
+  font-size: var(--text-sm);
+  border: 1.5px solid;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: all var(--duration-fast) var(--ease-out);
+  cursor: pointer;
+}
+.concept-chip:hover {
+  text-decoration: none;
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
 </style>

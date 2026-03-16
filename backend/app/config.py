@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     s2_backfill_batch_delay_seconds: int = 5
     s2_backfill_error_delay_seconds: int = 60
 
+    # NER Signals
+    ner_signals_path: str = "/data/ner/signals-product"
+    ner_auto_ingest_enabled: bool = True
+    ner_auto_ingest_wait_for_entries: bool = True
+    ner_auto_ingest_wait_timeout_seconds: int = 1800
+    ner_auto_ingest_poll_interval_seconds: float = 5.0
+
     # S2 corpus pipeline (local dataset cache)
     s2_corpus_path: str = "/data/s2/corpus.duckdb"
     s2_shards_path: str = "/data/s2/shards"

@@ -66,9 +66,15 @@ services:
       BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS: ${BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS:-300}
       BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED: ${BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED:-true}
       S2_CORPUS_PATH: /data/s2/corpus.duckdb
+      NER_SIGNALS_PATH: /data/ner/signals-product
+      NER_AUTO_INGEST_ENABLED: ${NER_AUTO_INGEST_ENABLED:-true}
+      NER_AUTO_INGEST_WAIT_FOR_ENTRIES: ${NER_AUTO_INGEST_WAIT_FOR_ENTRIES:-true}
+      NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS: ${NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS:-1800}
+      NER_AUTO_INGEST_POLL_INTERVAL_SECONDS: ${NER_AUTO_INGEST_POLL_INTERVAL_SECONDS:-5}
     volumes:
       - ${BIBLIOGRAPHY_HOST_CACHE:-./.cache/bibliography}:/var/lib/mundaneum/bibliography
       - ${S2_DATA_DIR:-/data/s2}:/data/s2:ro
+      - ${NER_DATA_DIR:-/home/b/projects/ner-gold/artifacts/signals-product}:/data/ner/signals-product:ro
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

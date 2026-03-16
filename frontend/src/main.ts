@@ -90,6 +90,31 @@ const router = createRouter({
             props: { entity: 'topics' }
         },
         {
+            path: '/trends',
+            name: 'trends',
+            component: () => import('./views/Trends.vue')
+        },
+        {
+            path: '/concepts',
+            name: 'concepts',
+            component: () => import('./views/ConceptBundles.vue')
+        },
+        {
+            path: '/concepts/:index',
+            name: 'concept-detail',
+            component: () => import('./views/BundleDetail.vue')
+        },
+        {
+            path: '/entities',
+            name: 'entities',
+            component: () => import('./views/NerEntityList.vue')
+        },
+        {
+            path: '/entities/:id',
+            name: 'entity-detail',
+            component: () => import('./views/NerEntityDetail.vue')
+        },
+        {
             path: '/:pathMatch(.*)*',
             name: 'not-found',
             component: () => import('./views/NotFound.vue')

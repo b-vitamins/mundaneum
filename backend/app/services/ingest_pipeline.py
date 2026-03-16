@@ -2,6 +2,7 @@
 Parse/import/sync pipeline for BibTeX ingest.
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -125,7 +126,7 @@ async def sync_imported_entries(
         return
 
     try:
-        search_index.sync_entries(entries)
+        await asyncio.to_thread(search_index.sync_entries, entries)
     except MeilisearchUnavailableError:
         logger.warning("Could not sync to Meilisearch (unavailable)")
     except Exception as exc:
@@ -195,9 +196,13 @@ async def ingest_bib_file(
 ) -> IngestResult:
     """Parse and ingest one bibliography file using the shared pipeline."""
     if isinstance(bib_path, BibliographySourceFile):
-        entries_data = parse_bib_file(bib_path.path, source=bib_path)
+        entries_data = await asyncio.to_thread(
+            parse_bib_file,
+            bib_path.path,
+            source=bib_path,
+        )
     else:
-        entries_data = parse_bib_file(bib_path)
+        entries_data = await asyncio.to_thread(parse_bib_file, bib_path)
     if not entries_data:
         return IngestResult()
     return await ingest_parsed_entries(

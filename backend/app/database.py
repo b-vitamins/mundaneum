@@ -54,6 +54,15 @@ def build_database_services() -> "DatabaseServices":
     return DatabaseServices(engine=engine, session_factory=session_factory)
 
 
+async def ensure_database_schema(engine) -> None:
+    """Create any missing tables for registered SQLAlchemy models."""
+    # Import model registry side effects so Base.metadata contains all tables.
+    import app.models  # noqa: F401
+
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+
 async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """Resolve a database session from the app-owned context."""
     session_factory = request.app.state.context.services.database.session_factory

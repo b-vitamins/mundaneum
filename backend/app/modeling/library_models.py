@@ -19,6 +19,7 @@ from app.modeling.value_objects import EntryMetadata
 if TYPE_CHECKING:
     from app.modeling.catalog_models import EntryTopic, Subject, Venue
     from app.modeling.collection_models import CollectionEntry
+    from app.modeling.ner_models import EntryNerEntity
     from app.modeling.s2_models import S2Paper
 
 
@@ -91,6 +92,9 @@ class Entry(Base):
         "Subject", back_populates="entries"
     )
     topics: Mapped[list["EntryTopic"]] = relationship(
+        back_populates="entry", cascade="all, delete-orphan"
+    )
+    ner_entities: Mapped[list["EntryNerEntity"]] = relationship(
         back_populates="entry", cascade="all, delete-orphan"
     )
     s2_paper: Mapped[Optional["S2Paper"]] = relationship(

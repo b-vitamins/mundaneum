@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.app_context import build_app_context
 from app.config import VERSION, settings
-from app.database import get_db
+from app.database import ensure_database_schema, get_db
 from app.exceptions import MundaneumError
 from app.logging import get_logger, setup_logging
 from app.middleware import RequestIDMiddleware
@@ -21,12 +21,15 @@ from app.routers import (
     admin,
     authors,
     collections,
+    concepts,
     entries,
     graph,
     ingest,
+    ner,
     search,
     subjects,
     topics,
+    trends,
     venues,
 )
 from app.schemas.system import StatsResponse
@@ -39,6 +42,7 @@ async def lifespan(app: FastAPI):
     """Application lifecycle manager."""
     setup_logging()
     logger.info("Starting Mundaneum v%s", VERSION)
+    await ensure_database_schema(app.state.context.services.database.engine)
     runtime = app.state.runtime
 
     report = await runtime.health.get_report()
@@ -109,7 +113,10 @@ app.include_router(authors.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
 app.include_router(graph.router, prefix="/api")
 app.include_router(collections.router, prefix="/api")
+app.include_router(concepts.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
+app.include_router(ner.router, prefix="/api")
+app.include_router(trends.router, prefix="/api")
 app.include_router(search.router, prefix="/api/search")
 app.include_router(venues.router, prefix="/api")
 app.include_router(subjects.router, prefix="/api")

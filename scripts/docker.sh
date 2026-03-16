@@ -16,6 +16,11 @@ BIBLIOGRAPHY_REPO_REF="${BIBLIOGRAPHY_REPO_REF:-}"
 BIBLIOGRAPHY_HOST_CACHE="${BIBLIOGRAPHY_HOST_CACHE:-$REPO_ROOT/.cache/bibliography}"
 BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS="${BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS:-300}"
 BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED="${BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED:-false}"
+NER_DATA_DIR="${NER_DATA_DIR:-/home/b/projects/ner-gold/artifacts/signals-product}"
+NER_AUTO_INGEST_ENABLED="${NER_AUTO_INGEST_ENABLED:-true}"
+NER_AUTO_INGEST_WAIT_FOR_ENTRIES="${NER_AUTO_INGEST_WAIT_FOR_ENTRIES:-true}"
+NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS="${NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS:-1800}"
+NER_AUTO_INGEST_POLL_INTERVAL_SECONDS="${NER_AUTO_INGEST_POLL_INTERVAL_SECONDS:-5}"
 DOCS_DIRECTORY="${DOCS_DIRECTORY:-/home/b/documents}"
 S2_DATA_DIR="${S2_DATA_DIR:-/data/s2}"
 NETWORK_NAME="mundaneum-net"
@@ -51,6 +56,11 @@ show_help() {
     echo "  BIBLIOGRAPHY_HOST_CACHE        Host checkout path (default: ./.cache/bibliography)"
     echo "  BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS  In-app git timeout in seconds (default: 300)"
     echo "  BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED  Allow in-container git pull/clone (default: false)"
+    echo "  NER_DATA_DIR                   Host signals-product directory to mount (optional)"
+    echo "  NER_AUTO_INGEST_ENABLED        Auto-ingest newest NER release at startup (default: true)"
+    echo "  NER_AUTO_INGEST_WAIT_FOR_ENTRIES  Wait for bibliography entries before NER ingest (default: true)"
+    echo "  NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS  Max wait for entries (default: 1800)"
+    echo "  NER_AUTO_INGEST_POLL_INTERVAL_SECONDS  Entry readiness poll interval (default: 5)"
     echo "  DOCKER_CMD                     Docker command override"
     echo ""
 }
@@ -226,6 +236,11 @@ start_mundaneum() {
         -e "BIBLIOGRAPHY_REPO_REF=$BIBLIOGRAPHY_REPO_REF"
         -e "BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS=$BIBLIOGRAPHY_SYNC_TIMEOUT_SECONDS"
         -e "BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED=$BIBLIOGRAPHY_RUNTIME_SYNC_ENABLED"
+        -e NER_SIGNALS_PATH=/data/ner/signals-product
+        -e "NER_AUTO_INGEST_ENABLED=$NER_AUTO_INGEST_ENABLED"
+        -e "NER_AUTO_INGEST_WAIT_FOR_ENTRIES=$NER_AUTO_INGEST_WAIT_FOR_ENTRIES"
+        -e "NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS=$NER_AUTO_INGEST_WAIT_TIMEOUT_SECONDS"
+        -e "NER_AUTO_INGEST_POLL_INTERVAL_SECONDS=$NER_AUTO_INGEST_POLL_INTERVAL_SECONDS"
         -e S2_CORPUS_PATH=/data/s2/corpus.duckdb
         -v "$BIBLIOGRAPHY_HOST_CACHE:/var/lib/mundaneum/bibliography"
     )
@@ -240,6 +255,11 @@ start_mundaneum() {
     if [ -n "$S2_DATA_DIR" ] && [ -d "$S2_DATA_DIR" ]; then
         args+=(-v "$S2_DATA_DIR:/data/s2:ro")
         echo "  S2 Corpus: $S2_DATA_DIR → /data/s2"
+    fi
+
+    if [ -n "$NER_DATA_DIR" ] && [ -d "$NER_DATA_DIR" ]; then
+        args+=(-v "$NER_DATA_DIR:/data/ner/signals-product:ro")
+        echo "  NER Signals: $NER_DATA_DIR → /data/ner/signals-product"
     fi
 
     args+=(mundaneum)

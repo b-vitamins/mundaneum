@@ -128,7 +128,7 @@ class IngestionWorker:
 
         try:
             # Ensure Meilisearch index exists
-            self._ensure_index_ready()
+            await asyncio.to_thread(self._ensure_index_ready)
 
             # Collect all bib files
             bib_files = list(self._bib_scanner(directory))

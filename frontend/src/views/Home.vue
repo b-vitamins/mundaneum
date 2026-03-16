@@ -62,6 +62,9 @@ onMounted(async () => {
         <router-link to="/venues" class="pill">Venues</router-link>
         <router-link to="/subjects" class="pill">Subjects</router-link>
         <router-link to="/topics" class="pill">Topics</router-link>
+        <router-link to="/entities" class="pill">Entities</router-link>
+        <router-link to="/trends" class="pill">Trends</router-link>
+        <router-link to="/concepts" class="pill">Concepts</router-link>
         <router-link to="/collections" class="pill">Collections</router-link>
       </nav>
     </div>
